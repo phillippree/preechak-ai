@@ -12,6 +12,8 @@ const DEFAULT_CONFIG = {
     apiTransportMode: 'websocket',
     geminiLiveModel: 'gemini-3.1-flash-live-preview',
     geminiHttpModel: 'gemini-3.8-flash',
+    httpRecentHistoryTokenBudget: 4000,
+    httpSummaryTargetTokens: 500,
     groqModel: 'qwen/qwen3.6-27b',
     groqImageModel: 'qwen/qwen3.6-27b',
     disableGroqThinking: true,

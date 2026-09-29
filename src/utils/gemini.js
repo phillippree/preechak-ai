@@ -1,3 +1,4 @@
+const { logLlmRequest } = require('./llmRequestLogger');
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
@@ -67,12 +68,14 @@ async function sendSilenceBoundary(sessionRef) {
     const session = sessionRef?.current || global.geminiSessionRef?.current;
     if (!session) return;
     try {
-        await session.sendRealtimeInput({
-            audio: {
-                data: SILENCE_BOUNDARY_CHUNK.toString('base64'),
-                mimeType: 'audio/pcm;rate=24000',
-            },
-        });
+        await session.sendRealtimeInput(
+            logLlmRequest('Gemini sendRealtimeInput', {
+                audio: {
+                    data: SILENCE_BOUNDARY_CHUNK.toString('base64'),
+                    mimeType: 'audio/pcm;rate=24000',
+                },
+            })
+        );
     } catch (e) {}
 }
 
@@ -405,14 +408,16 @@ async function sendToGroq(transcription) {
                 Authorization: `Bearer ${groqApiKey}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                model: modelToUse,
-                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
-                stream: true,
-                temperature: 0.7,
-                max_completion_tokens: GROQ_MAX_COMPLETION_TOKENS,
-                ...getGroqReasoningOptions(modelToUse, config.disableGroqThinking),
-            }),
+            body: JSON.stringify(
+                logLlmRequest('Groq', {
+                    model: modelToUse,
+                    messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+                    stream: true,
+                    temperature: 0.7,
+                    max_completion_tokens: GROQ_MAX_COMPLETION_TOKENS,
+                    ...getGroqReasoningOptions(modelToUse, config.disableGroqThinking),
+                })
+            ),
         });
 
         if (!response.ok) {
@@ -549,28 +554,30 @@ async function sendImageToGroq(base64Data, prompt, savedImagePath = null) {
                 Authorization: `Bearer ${groqApiKey}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                model,
-                messages: [
-                    { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: prompt },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${base64Data}`,
+            body: JSON.stringify(
+                logLlmRequest('Groq', {
+                    model,
+                    messages: [
+                        { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
+                        {
+                            role: 'user',
+                            content: [
+                                { type: 'text', text: prompt },
+                                {
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:image/jpeg;base64,${base64Data}`,
+                                    },
                                 },
-                            },
-                        ],
-                    },
-                ],
-                stream: true,
-                temperature: 0.7,
-                max_completion_tokens: GROQ_MAX_COMPLETION_TOKENS,
-                ...getGroqReasoningOptions(model, config.disableGroqThinking),
-            }),
+                            ],
+                        },
+                    ],
+                    stream: true,
+                    temperature: 0.7,
+                    max_completion_tokens: GROQ_MAX_COMPLETION_TOKENS,
+                    ...getGroqReasoningOptions(model, config.disableGroqThinking),
+                })
+            ),
         });
 
         if (!response.ok) {
@@ -699,10 +706,12 @@ async function sendToGemma(transcription) {
             ...messages,
         ];
 
-        const response = await ai.models.generateContentStream({
-            model: 'gemma-4-26b-a4b-it',
-            contents: messagesWithSystem,
-        });
+        const response = await ai.models.generateContentStream(
+            logLlmRequest('Gemini generateContentStream', {
+                model: 'gemma-4-26b-a4b-it',
+                contents: messagesWithSystem,
+            })
+        );
 
         let fullText = '';
         let isFirst = true;
@@ -794,156 +803,158 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     try {
         const liveModel = getConfig().geminiLiveModel;
         console.log(`Connecting to Gemini Live with model: "${liveModel}"`);
-        const session = await client.live.connect({
-            model: liveModel,
-            callbacks: {
-                onopen: function () {
-                    logTransportEvent('gemini.live.opened', {});
-                    sendToRenderer('update-status', 'Live session connected');
-                },
-                onmessage: function (message) {
-                    console.log('----------------', message);
-                    logTransportEvent('gemini.live.message', message);
+        const session = await client.live.connect(
+            logLlmRequest('Gemini connect', {
+                model: liveModel,
+                callbacks: {
+                    onopen: function () {
+                        logTransportEvent('gemini.live.opened', {});
+                        sendToRenderer('update-status', 'Live session connected');
+                    },
+                    onmessage: function (message) {
+                        console.log('----------------', message);
+                        logTransportEvent('gemini.live.message', message);
 
-                    // Handle input transcription (what was spoken)
-                    if (message.serverContent?.inputTranscription?.results) {
-                        currentTranscription += formatSpeakerResults(message.serverContent.inputTranscription.results);
-                        sendToRenderer('live-transcription', {
-                            text: currentTranscription.trim(),
-                            speaker: activeSpeaker || 'Interviewer',
-                            isListening: true,
-                        });
-                    } else if (message.serverContent?.inputTranscription?.text) {
-                        const text = message.serverContent.inputTranscription.text;
-                        if (text.trim() !== '') {
-                            let prefs = {};
-                            try {
-                                prefs = getPreferences() || {};
-                            } catch (e) {}
-
-                            let speaker = 'Interviewer';
-                            if (prefs.audioMode === 'mic_only') {
-                                speaker = 'You';
-                            } else if (prefs.audioMode === 'speaker_only') {
-                                speaker = 'Interviewer';
-                            } else if (prefs.audioMode === 'both') {
-                                speaker = activeSpeaker || 'Interviewer';
-                            }
-
-                            if (lastTranscriptionSpeaker !== speaker) {
-                                if (currentTranscription.trim() !== '') {
-                                    currentTranscription += '\n';
-                                }
-                                currentTranscription += `[${speaker}]: ${text}`;
-                                lastTranscriptionSpeaker = speaker;
-                            } else {
-                                currentTranscription += ` ${text}`;
-                            }
-
+                        // Handle input transcription (what was spoken)
+                        if (message.serverContent?.inputTranscription?.results) {
+                            currentTranscription += formatSpeakerResults(message.serverContent.inputTranscription.results);
                             sendToRenderer('live-transcription', {
                                 text: currentTranscription.trim(),
-                                speaker: speaker,
+                                speaker: activeSpeaker || 'Interviewer',
                                 isListening: true,
                             });
+                        } else if (message.serverContent?.inputTranscription?.text) {
+                            const text = message.serverContent.inputTranscription.text;
+                            if (text.trim() !== '') {
+                                let prefs = {};
+                                try {
+                                    prefs = getPreferences() || {};
+                                } catch (e) {}
+
+                                let speaker = 'Interviewer';
+                                if (prefs.audioMode === 'mic_only') {
+                                    speaker = 'You';
+                                } else if (prefs.audioMode === 'speaker_only') {
+                                    speaker = 'Interviewer';
+                                } else if (prefs.audioMode === 'both') {
+                                    speaker = activeSpeaker || 'Interviewer';
+                                }
+
+                                if (lastTranscriptionSpeaker !== speaker) {
+                                    if (currentTranscription.trim() !== '') {
+                                        currentTranscription += '\n';
+                                    }
+                                    currentTranscription += `[${speaker}]: ${text}`;
+                                    lastTranscriptionSpeaker = speaker;
+                                } else {
+                                    currentTranscription += ` ${text}`;
+                                }
+
+                                sendToRenderer('live-transcription', {
+                                    text: currentTranscription.trim(),
+                                    speaker: speaker,
+                                    isListening: true,
+                                });
+                            }
                         }
-                    }
 
-                    if (message.serverContent?.inputTranscription) {
-                        sendFinalTranscriptionToGroq();
-                    }
-
-                    if (!hasGroqKey() && message.serverContent?.outputTranscription?.text) {
-                        const isFirstChunk = messageBuffer === '';
-                        messageBuffer += message.serverContent.outputTranscription.text;
-                        sendToRenderer('live-transcription', { text: '', isListening: false });
-                        sendToRenderer('live-thinking', { isThinking: false });
-                        sendToRenderer(isFirstChunk ? 'new-response' : 'update-response', {
-                            prompt: currentTranscription.trim(),
-                            text: messageBuffer,
-                            timestamp: Date.now(),
-                        });
-                    }
-
-                    if (message.serverContent?.interrupted) {
-                        lastTranscriptionSpeaker = null;
-                        sendToRenderer('live-transcription', { text: '', isListening: false });
-                        sendToRenderer('live-thinking', { isThinking: false });
-                        if (currentTranscription.trim() !== '' && !hasGroqKey() && messageBuffer.trim() !== '') {
-                            saveConversationTurn(currentTranscription, messageBuffer);
+                        if (message.serverContent?.inputTranscription) {
+                            sendFinalTranscriptionToGroq();
                         }
-                    }
 
-                    if (message.serverContent?.generationComplete) {
-                        lastTranscriptionSpeaker = null;
-                        sendToRenderer('live-transcription', { text: '', isListening: false });
-                        sendToRenderer('live-thinking', { isThinking: false });
-                        if (currentTranscription.trim() !== '') {
-                            if (!hasGroqKey() && messageBuffer.trim() !== '') {
+                        if (!hasGroqKey() && message.serverContent?.outputTranscription?.text) {
+                            const isFirstChunk = messageBuffer === '';
+                            messageBuffer += message.serverContent.outputTranscription.text;
+                            sendToRenderer('live-transcription', { text: '', isListening: false });
+                            sendToRenderer('live-thinking', { isThinking: false });
+                            sendToRenderer(isFirstChunk ? 'new-response' : 'update-response', {
+                                prompt: currentTranscription.trim(),
+                                text: messageBuffer,
+                                timestamp: Date.now(),
+                            });
+                        }
+
+                        if (message.serverContent?.interrupted) {
+                            lastTranscriptionSpeaker = null;
+                            sendToRenderer('live-transcription', { text: '', isListening: false });
+                            sendToRenderer('live-thinking', { isThinking: false });
+                            if (currentTranscription.trim() !== '' && !hasGroqKey() && messageBuffer.trim() !== '') {
                                 saveConversationTurn(currentTranscription, messageBuffer);
                             }
-                            currentTranscription = '';
                         }
-                        messageBuffer = '';
-                    }
 
-                    if (message.serverContent?.turnComplete) {
-                        lastTranscriptionSpeaker = null;
-                        currentTranscription = '';
-                        messageBuffer = '';
-                        groqRequestStartedForTurn = false;
-                        sendToRenderer('live-transcription', { text: '', isListening: false });
-                        sendToRenderer('live-thinking', { isThinking: false });
-                        sendToRenderer('update-status', 'Listening...');
-                    }
-                },
-                onerror: function (e) {
-                    console.log('Session error:', e.message);
-                    logTransportEvent('gemini.live.error', {
-                        error: e.message,
-                    });
-                    sendToRenderer('update-status', 'Error: ' + e.message);
-                },
-                onclose: function (e) {
-                    console.log('Session closed:', e.reason);
-                    logTransportEvent('gemini.live.closed', {
-                        reason: e.reason,
-                    });
+                        if (message.serverContent?.generationComplete) {
+                            lastTranscriptionSpeaker = null;
+                            sendToRenderer('live-transcription', { text: '', isListening: false });
+                            sendToRenderer('live-thinking', { isThinking: false });
+                            if (currentTranscription.trim() !== '') {
+                                if (!hasGroqKey() && messageBuffer.trim() !== '') {
+                                    saveConversationTurn(currentTranscription, messageBuffer);
+                                }
+                                currentTranscription = '';
+                            }
+                            messageBuffer = '';
+                        }
 
-                    // Don't reconnect if user intentionally closed
-                    if (isUserClosing) {
-                        isUserClosing = false;
-                        closeTransportLog();
-                        sendToRenderer('update-status', 'Session closed');
-                        return;
-                    }
+                        if (message.serverContent?.turnComplete) {
+                            lastTranscriptionSpeaker = null;
+                            currentTranscription = '';
+                            messageBuffer = '';
+                            groqRequestStartedForTurn = false;
+                            sendToRenderer('live-transcription', { text: '', isListening: false });
+                            sendToRenderer('live-thinking', { isThinking: false });
+                            sendToRenderer('update-status', 'Listening...');
+                        }
+                    },
+                    onerror: function (e) {
+                        console.log('Session error:', e.message);
+                        logTransportEvent('gemini.live.error', {
+                            error: e.message,
+                        });
+                        sendToRenderer('update-status', 'Error: ' + e.message);
+                    },
+                    onclose: function (e) {
+                        console.log('Session closed:', e.reason);
+                        logTransportEvent('gemini.live.closed', {
+                            reason: e.reason,
+                        });
 
-                    // Attempt reconnection
-                    if (sessionParams && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                        attemptReconnect();
-                    } else {
-                        closeTransportLog();
-                        sendToRenderer('update-status', 'Session closed');
-                    }
+                        // Don't reconnect if user intentionally closed
+                        if (isUserClosing) {
+                            isUserClosing = false;
+                            closeTransportLog();
+                            sendToRenderer('update-status', 'Session closed');
+                            return;
+                        }
+
+                        // Attempt reconnection
+                        if (sessionParams && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                            attemptReconnect();
+                        } else {
+                            closeTransportLog();
+                            sendToRenderer('update-status', 'Session closed');
+                        }
+                    },
                 },
-            },
-            config: {
-                responseModalities: [Modality.AUDIO],
-                proactivity: { proactiveAudio: true },
-                outputAudioTranscription: {},
-                tools: enabledTools,
-                // Enable speaker diarization
-                inputAudioTranscription: {
-                    enableSpeakerDiarization: true,
-                    minSpeakerCount: 2,
-                    maxSpeakerCount: 2,
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    proactivity: { proactiveAudio: true },
+                    outputAudioTranscription: {},
+                    tools: enabledTools,
+                    // Enable speaker diarization
+                    inputAudioTranscription: {
+                        enableSpeakerDiarization: true,
+                        minSpeakerCount: 2,
+                        maxSpeakerCount: 2,
+                    },
+                    contextWindowCompression: { slidingWindow: {} },
+                    speechConfig: { languageCode: language },
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }],
+                    },
                 },
-                contextWindowCompression: { slidingWindow: {} },
-                speechConfig: { languageCode: language },
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }],
-                },
-            },
-        });
+            })
+        );
 
         isInitializingSession = false;
         if (!isReconnect) {
@@ -991,7 +1002,7 @@ async function attemptReconnect() {
             if (contextMessage) {
                 try {
                     console.log('Restoring conversation context...');
-                    await session.sendRealtimeInput({ text: contextMessage });
+                    await session.sendRealtimeInput(logLlmRequest('Gemini sendRealtimeInput', { text: contextMessage }));
                 } catch (contextError) {
                     console.error('Failed to restore context:', contextError);
                     // Continue without context - better than failing
@@ -1213,12 +1224,14 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
 
     try {
         process.stdout.write('.');
-        await geminiSessionRef.current.sendRealtimeInput({
-            audio: {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            },
-        });
+        await geminiSessionRef.current.sendRealtimeInput(
+            logLlmRequest('Gemini sendRealtimeInput', {
+                audio: {
+                    data: base64Data,
+                    mimeType: 'audio/pcm;rate=24000',
+                },
+            })
+        );
     } catch (error) {
         console.error('Error sending audio to Gemini:', error);
     }
@@ -1247,10 +1260,12 @@ async function sendImageToGeminiHttp(base64Data, prompt, savedImagePath = null) 
         ];
 
         console.log(`Sending image to ${model} (streaming)...`);
-        const response = await ai.models.generateContentStream({
-            model: model,
-            contents: contents,
-        });
+        const response = await ai.models.generateContentStream(
+            logLlmRequest('Gemini generateContentStream', {
+                model: model,
+                contents: contents,
+            })
+        );
 
         // Increment count after successful call
         incrementLimitCount(model);
@@ -1423,9 +1438,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
             process.stdout.write('.');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
+            await geminiSessionRef.current.sendRealtimeInput(
+                logLlmRequest('Gemini sendRealtimeInput', {
+                    audio: { data: data, mimeType: mimeType },
+                })
+            );
             return { success: true };
         } catch (error) {
             console.error('Error sending system audio:', error);
@@ -1508,9 +1525,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
             process.stdout.write(',');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
+            await geminiSessionRef.current.sendRealtimeInput(
+                logLlmRequest('Gemini sendRealtimeInput', {
+                    audio: { data: data, mimeType: mimeType },
+                })
+            );
             return { success: true };
         } catch (error) {
             console.error('Error sending mic audio:', error);

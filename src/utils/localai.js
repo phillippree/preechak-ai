@@ -1,3 +1,4 @@
+const { logLlmRequest } = require('./llmRequestLogger');
 const fs = require('fs');
 const path = require('path');
 const { getSystemPrompt } = require('./prompts');
@@ -219,15 +220,17 @@ async function requestLlama(messages, onText) {
     const response = await fetch(`${llamaBaseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model: 'local',
-            messages,
-            stream: true,
-            max_tokens: 2048,
-            chat_template_kwargs: {
-                enable_thinking: false,
-            },
-        }),
+        body: JSON.stringify(
+            logLlmRequest('Local llama.cpp', {
+                model: 'local',
+                messages,
+                stream: true,
+                max_tokens: 2048,
+                chat_template_kwargs: {
+                    enable_thinking: false,
+                },
+            })
+        ),
     });
 
     if (!response.ok || !response.body) {
