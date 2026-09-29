@@ -1,5 +1,9 @@
 # Preechak AI
 
+![Preechak AI home screen](documents/images/home.png)
+
+![Preechak AI meeting screen](documents/images/meeting_screen.png)
+
 Preechak AI is an Electron desktop assistant that uses screen captures and audio to provide contextual AI responses. It supports API-based sessions with Gemini and Groq, plus local inference with llama.cpp and whisper.cpp.
 
 ## Features
