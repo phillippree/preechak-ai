@@ -23,7 +23,13 @@ function getLocalAi() {
     return _localai;
 }
 
-// Provider mode: 'byok', 'cloud', or 'local'
+let _geminiHttp = null;
+function getGeminiHttp() {
+    if (!_geminiHttp) _geminiHttp = require('./gemini-http');
+    return _geminiHttp;
+}
+
+// Provider mode: 'byok', 'byok_http', 'cloud', or 'local'
 let currentProviderMode = 'byok';
 
 // Groq conversation history for context
@@ -1145,6 +1151,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk);
+            } else if (currentProviderMode === 'byok_http') {
+                getGeminiHttp().processHttpAudioChunk(monoChunk, 'Interviewer');
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -1217,8 +1225,8 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
 }
 
 async function sendImageToGeminiHttp(base64Data, prompt, savedImagePath = null) {
-    // Get available model based on rate limits
-    const model = getAvailableModel();
+    const config = getConfig();
+    const model = config.apiTransportMode === 'http' && config.geminiHttpModel ? config.geminiHttpModel : getAvailableModel();
 
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -1302,6 +1310,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     });
 
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
+        const config = getConfig();
+        const transportMode = config.apiTransportMode || 'websocket';
+
+        if (transportMode === 'http') {
+            currentProviderMode = 'byok_http';
+            const success = await getGeminiHttp().initializeGeminiHttpSession(apiKey, customPrompt, profile, language);
+            return success;
+        }
+
         currentProviderMode = 'byok';
         const session = await initializeGeminiSession(apiKey, customPrompt, profile, language);
         if (session) {
@@ -1394,6 +1411,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
+        if (currentProviderMode === 'byok_http') {
+            try {
+                getGeminiHttp().processHttpAudioChunk(pcmBuffer, activeSpeaker || 'Interviewer');
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending HTTP audio:', error);
+                return { success: false, error: error.message };
+            }
+        }
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
             process.stdout.write('.');
@@ -1467,6 +1493,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: true };
             } catch (error) {
                 console.error('Error sending local mic audio:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        if (currentProviderMode === 'byok_http') {
+            try {
+                getGeminiHttp().processHttpAudioChunk(pcmBuffer, 'You');
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending HTTP mic audio:', error);
                 return { success: false, error: error.message };
             }
         }
@@ -1563,6 +1598,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
 
+        if (currentProviderMode === 'byok_http') {
+            return await getGeminiHttp().sendTextToGeminiHttp(trimmedText);
+        }
+
         try {
             console.log('Sending text message:', text);
             currentTranscription = trimmedText;
@@ -1621,6 +1660,13 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
             if (currentProviderMode === 'local') {
                 getLocalAi().closeLocalSession();
+                currentProviderMode = 'byok';
+                closeTransportLog();
+                return { success: true };
+            }
+
+            if (currentProviderMode === 'byok_http') {
+                getGeminiHttp().closeGeminiHttpSession();
                 currentProviderMode = 'byok';
                 closeTransportLog();
                 return { success: true };
@@ -1685,6 +1731,7 @@ module.exports = {
     sendToRenderer,
     initializeNewSession,
     saveConversationTurn,
+    saveScreenAnalysis,
     getCurrentSessionData,
     killExistingSystemAudioDump,
     startMacOSAudioCapture,
@@ -1694,4 +1741,7 @@ module.exports = {
     sendImageToGeminiHttp,
     setupGeminiIpcHandlers,
     formatSpeakerResults,
+    sendToGroq,
+    hasGroqKey,
+    getProfileSpeakerSilencePause,
 };

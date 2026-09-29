@@ -738,7 +738,9 @@ export class MainView extends LitElement {
         _geminiKey: { state: true },
         _groqKey: { state: true },
         _openaiKey: { state: true },
+        _apiTransportMode: { state: true },
         _geminiLiveModel: { state: true },
+        _geminiHttpModel: { state: true },
         _groqModel: { state: true },
         _groqImageModel: { state: true },
         _disableGroqThinking: { state: true },
@@ -767,7 +769,9 @@ export class MainView extends LitElement {
         this._geminiKey = '';
         this._groqKey = '';
         this._openaiKey = '';
+        this._apiTransportMode = 'websocket';
         this._geminiLiveModel = 'gemini-3.1-flash-live-preview';
+        this._geminiHttpModel = 'gemini-3.8-flash';
         this._groqModel = 'qwen/qwen3.6-27b';
         this._groqImageModel = 'qwen/qwen3.6-27b';
         this._disableGroqThinking = true;
@@ -807,7 +811,9 @@ export class MainView extends LitElement {
             this._geminiKey = (await preechakAi.storage.getApiKey().catch(() => '')) || '';
             this._groqKey = (await preechakAi.storage.getGroqApiKey().catch(() => '')) || '';
             this._openaiKey = creds.openaiKey || '';
+            this._apiTransportMode = config.apiTransportMode || 'websocket';
             this._geminiLiveModel = config.geminiLiveModel || 'gemini-3.1-flash-live-preview';
+            this._geminiHttpModel = config.geminiHttpModel || 'gemini-3.8-flash';
             this._groqModel = config.groqModel || 'qwen/qwen3.6-27b';
             this._groqImageModel = config.groqImageModel || 'qwen/qwen3.6-27b';
             this._disableGroqThinking = config.disableGroqThinking === true;
@@ -985,9 +991,21 @@ export class MainView extends LitElement {
         this.requestUpdate();
     }
 
+    async _saveApiTransportMode(val) {
+        this._apiTransportMode = val;
+        await preechakAi.storage.updateConfig('apiTransportMode', val);
+        this.requestUpdate();
+    }
+
     async _saveGeminiLiveModel(val) {
         this._geminiLiveModel = val;
         await preechakAi.storage.updateConfig('geminiLiveModel', val);
+        this.requestUpdate();
+    }
+
+    async _saveGeminiHttpModel(val) {
+        this._geminiHttpModel = val;
+        await preechakAi.storage.updateConfig('geminiHttpModel', val);
         this.requestUpdate();
     }
 
@@ -1235,8 +1253,10 @@ export class MainView extends LitElement {
             <details class="config-section">
                 <summary class="config-summary">
                     <span class="config-summary-text">
-                        <span class="config-summary-title">Transcription</span>
-                        <span class="config-summary-description">Gemini Live connection</span>
+                        <span class="config-summary-title">Gemini API & Connection</span>
+                        <span class="config-summary-description"
+                            >${this._apiTransportMode === 'http' ? 'HTTP Buffered Requests' : 'WebSocket Live Streaming'}</span
+                        >
                     </span>
                     ${this._renderConfigChevron()}
                 </summary>
@@ -1256,9 +1276,37 @@ export class MainView extends LitElement {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Gemini Live Model</label>
-                        <input type="text" .value=${this._geminiLiveModel} @input=${e => this._saveGeminiLiveModel(e.target.value)} />
+                        <label class="form-label">Connection Mode</label>
+                        <select .value=${this._apiTransportMode} @change=${e => this._saveApiTransportMode(e.target.value)}>
+                            <option value="websocket">Live Streaming (WebSocket) — Gemini Live</option>
+                            <option value="http">Buffered Requests (HTTP) — Any Gemini Model</option>
+                        </select>
+                        <div class="form-hint">
+                            ${
+                                this._apiTransportMode === 'http'
+                                    ? 'Buffers audio segments upon pauses and queries standard Gemini models via HTTP REST.'
+                                    : 'Real-time bidirectional WebSocket streaming connection.'
+                            }
+                        </div>
                     </div>
+
+                    ${
+                        this._apiTransportMode === 'http'
+                            ? html`
+                                  <div class="form-group">
+                                      <label class="form-label">Gemini HTTP Model</label>
+                                      <input type="text" .value=${this._geminiHttpModel} @input=${e => this._saveGeminiHttpModel(e.target.value)} />
+                                      <div class="form-hint">Examples: gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-pro</div>
+                                  </div>
+                              `
+                            : html`
+                                  <div class="form-group">
+                                      <label class="form-label">Gemini Live Model</label>
+                                      <input type="text" .value=${this._geminiLiveModel} @input=${e => this._saveGeminiLiveModel(e.target.value)} />
+                                      <div class="form-hint">Live WebSocket model (e.g. gemini-3.1-flash-live-preview)</div>
+                                  </div>
+                              `
+                    }
                 </div>
             </details>
 
