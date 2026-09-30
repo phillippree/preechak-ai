@@ -48,26 +48,47 @@ On the home screen:
 
 With a Groq key, the app can use Groq for responses; without one, Gemini is used directly for answers. Image questions require a model that supports images.
 
-### Optional local Whisper transcription for Gemini HTTP
+### Audio transcription
 
-Under **Gemini API & Connection → Connection Mode: Buffered Requests (HTTP)**, you can enable **“Transcribe locally with Whisper”**:
+Under **Gemini API & Connection → Buffered Requests (HTTP) → Audio Transcription**, choose how speech becomes text:
 
-- **Audio privacy & hybrid workflow**: Audio is captured and transcribed entirely on your local machine using native `whisper.cpp`. The recognized transcript text (not your raw audio) is then forwarded to your configured remote answer provider (Gemini HTTP or Groq).
-- **Standalone runner isolation**: Unlike full Local AI mode, enabling local Whisper transcription starts only the `whisper.cpp` server process and leaves `llama.cpp` offline, keeping memory and CPU footprint low.
-- **Verified Upstream Sources & Speech Models**:
-    - Speech models are downloaded directly from the official Hugging Face repository ([`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp)):
-        - `tiny.en` (~75 MB): `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin`
-        - `base.en` (~142 MB): `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin`
-        - `small.en` (~466 MB): `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin`
-- **Whisper Server Engine Requirements & Platform Support**:
-    - **macOS**: Official `whisper.cpp` GitHub releases do not publish standalone prebuilt server executables for macOS (only `xcframework.zip` libraries). You can install `whisper-server` via Homebrew (`brew install whisper-cpp`) or compile it from official source ([`ggml-org/whisper.cpp`](https://github.com/ggml-org/whisper.cpp)), then copy or symlink `whisper-server` into `<config-dir>/binaries/` or ensure it is on your system `PATH`.
-    - **Engine discovery**: The app searches `<config-dir>/binaries/` followed by standard PATH directories (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`).
-- **Download manager & integrity checks**:
-    - Separate status indicators are shown for the **Whisper engine** and the selected **Speech model** (`Ready`, `Not downloaded`, `Downloading`, `Verifying`, `Needs repair`, `Unsupported / Manual setup required`).
-    - Model downloads use temporary `.part` files and verify SHA256 checksums before promoting files to active use.
-    - Includes real-time progress indicators (bytes downloaded and percentage), **Cancel**, **Retry**, **Open download folder**, and safe **Remove model** controls.
-    - Downloaded files are stored in `<config-dir>/binaries/` and `<config-dir>/models/whisper/`.
-- **Failure handling**: If local Whisper encounters an error, an actionable notification is displayed. The system will never silently upload audio to Gemini when local transcription is selected.
+| Selection | Transcription path | Answer generation |
+| --- | --- | --- |
+| **Local Whisper** | Audio is transcribed on your computer by whisper.cpp | Recognized text is sent to Gemini HTTP, or Groq when configured |
+| **Google Gemini Cloud** | Buffered audio is sent to Gemini for transcription | The transcript is used in a separate answer request |
+| **No Transcription** | Audio is ignored by the HTTP transcription pipeline | Typed questions and manual screenshots remain available |
+
+The current HTTP transcription preference defaults to **Local Whisper** with **Base English**; saved settings override defaults. The overall connection default remains Gemini Live/WebSocket, which uses Gemini Live transcription and does not use this HTTP selector. Transcription settings cannot be changed during an active session.
+
+```mermaid
+flowchart TD
+    A["Microphone / system audio"] --> B["Detect speech and buffer until a pause"]
+    B --> C["Queue completed speech segment"]
+    C --> D{"HTTP transcription selection"}
+    D -->|Local Whisper| E["Resample to 16 kHz WAV<br/>Local whisper-server /inference"]
+    D -->|Gemini Cloud| F["Send audio to Gemini<br/>for transcription"]
+    E --> G["Show recognized words"]
+    F --> G
+    G --> H["Transcript + conversation context<br/>+ selected screenshot attachments"]
+    H --> I["Remote answer provider"]
+    I --> J["Stream answer and save history"]
+```
+
+The diagram shows the audio-enabled HTTP paths. With **No Transcription**, use text or screenshots directly. In Local Whisper mode, audio stays on your computer for recognition, but the transcript and any selected images still go to the remote answer provider. This starts only Whisper, not llama.cpp.
+
+#### Whisper engine and models
+
+- **Engine:** the current installer builds `whisper-server` from the [official whisper.cpp source](https://github.com/ggml-org/whisper.cpp) when no engine is found. This requires a working build toolchain; it is not simply a model download. The current source clone is not pinned to a release or commit.
+- **Models:** `tiny.en`, `base.en`, and `small.en` come from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp). These are English-only, and the current transcription request explicitly uses English.
+- **Storage:** engines and auxiliary files go under `<config-dir>/binaries/`; models go under `<config-dir>/models/whisper/`. See [Local data and storage locations](#local-data-and-storage-locations) for platform paths.
+- **Reuse:** existing engines are discovered locally, and valid model files are reused. Missing or invalid models are downloaded to temporary `.part` files and checked against their configured SHA-256 checksums.
+- **Progress:** the UI shows engine/model status, download progress, cancellation, retry/repair, open-folder, and model-removal controls. Model progress uses byte counts where available; engine-build percentages represent stages rather than precise remaining work.
+- **Startup:** the app launches Whisper on `127.0.0.1`, checks readiness, and posts WAV segments to `/inference`. Closing the HTTP session stops its Whisper server and clears pending speech.
+- **Failure:** Whisper errors are reported without silently uploading the audio to Gemini.
+
+**Troubleshooting:** an engine shown as installed can still fail to launch because the current installation check primarily detects its executable. A macOS error such as `Library not loaded: @rpath/libwhisper.1.dylib` indicates a missing engine dependency, not a corrupt speech model. The build code includes static-library flags and auxiliary-library handling, but an older broken executable may still require repair.
+
+See [Transcription details and diagrams](documents/transcription.md) for the complete routing, installation, queue, storage, and troubleshooting explanation. Full **Local AI** mode uses a separate combined Whisper + llama.cpp startup path, described below.
 
 ### Gemini HTTP context management, shared screenshots, and token budgeting
 
