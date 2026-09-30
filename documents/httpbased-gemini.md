@@ -72,13 +72,21 @@ flowchart TD
 - The raw PCM buffer is packaged into a standard RIFF/WAVE header (`createWavBuffer`) in memory (24 kHz, 16-bit mono PCM).
 - The WAV buffer is converted to a base64 string for transmission via `inlineData: { mimeType: 'audio/wav', data: base64Wav }`.
 
-### Step 4: Context Management & Token Budgeting
+### Step 4: Context Management, Shared Screenshots & Token Budgeting
 
-Rather than using a fixed message slice, HTTP mode manages conversation context dynamically:
+Rather than using a fixed message slice, HTTP mode manages conversation context dynamically and shares history between speech, text, and screenshot turns:
 
+- **Unified Conversation History**: Spoken turns, typed messages, and screenshot analyses share the same logical history (`httpConversationHistory`).
+- **Active Screenshot Attachments**: Capturing a screen automatically activates that screenshot for subsequent voice or text follow-up queries without guessing or keyword triggers.
+- **Attachment Controls in UI**:
+    - **Remove**: Exclude an image without deleting the saved screenshot file on disk.
+    - **Compare with previous**: Attach both the latest and preceding captures with distinct ordering labels (`[Attached Image 1 (Current)]`, `[Attached Image 2 (Previous)]`).
+    - **History Picker**: Re-attach any earlier capture from the current session (up to 2 active images).
+- **Queue Snapshotting**: Spoken questions snapshot active attachment IDs at speech-segment start, ensuring subsequent screenshots taken during transcription do not contaminate older questions.
 - **Recent History Token Budget**: Scans backward from the most recent turn to include full exchanges up to a configurable budget (`httpRecentHistoryTokenBudget`, default `4000` tokens) retaining original `user` and `model` roles.
 - **Running Summary of Older Context**: When the accumulated unsummarized history exceeds the token budget, the older turns are condensed via a background Gemini summarization call into a compact factual summary (`httpSummaryTargetTokens`, default `500` tokens).
-- **Speaker & Attribution Preservation**: The summary distinguishes between what the interviewer asked, what the user said (`[You]`), and what was suggested by the assistant (`[AI Suggested Answer]`).
+- **Speaker & Attribution Preservation**: The summary distinguishes between what the interviewer asked, what the user said (`[You]`), screenshot analyses, and what was suggested by the assistant (`[AI Suggested Answer]`).
+- **Token Estimation**: Each attached image contributes ~258 tokens to request context statistics. Images are stored on disk and cached in bounded in-memory storage (LRU).
 - **Resilient Fallback**: If summarization fails or encounters rate limits, the previous summary and bounded recent turns are safely retained without disrupting user responses or session history.
 
 ### Step 5: AI Model Execution & Streaming
@@ -86,7 +94,7 @@ Rather than using a fixed message slice, HTTP mode manages conversation context 
 - **Branch A: Direct Gemini Answer (Default when no Groq key)**:
     - Calls `ai.models.generateContentStream` with the configured `geminiHttpModel` (e.g. `gemini-3.8-flash`).
     - Passes the system prompt (from `prompts.js` with profile instructions and constraints).
-    - Injects the running conversation summary (if present) followed by the budgeted recent turns and current question.
+    - Injects the running conversation summary (if present) followed by the budgeted recent turns, any active image attachments, and the current question.
     - Streams chunks to the UI via `new-response` (first chunk) and `update-response` (subsequent chunks).
     - Saves the complete turn to local storage history on completion.
 - **Branch B: Groq Answer Mode (When Groq key is present)**:

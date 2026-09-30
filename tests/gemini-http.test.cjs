@@ -8,16 +8,23 @@ function harness({
     transcribe = async () => ({ text: 'What is a closure?' }),
     summarize = async () => ({ text: 'The interviewer asked about JS fundamentals. The candidate clarified experience with React.' }),
     config = {},
+    mockFs = null,
 } = {}) {
     const events = [],
         saved = [],
+        savedAnalyses = [],
         requests = [],
         summarizeRequests = [];
+
+    const effectiveFs = mockFs || fs;
+
     const context = {
         Buffer,
         console: { log() {}, error() {}, warn() {} },
         module: { exports: {} },
         require(name) {
+            if (name === 'node:fs' || name === 'fs') return effectiveFs;
+            if (name === 'node:path' || name === 'path') return path;
             if (name === './llmRequestLogger') return { logLlmRequest: (_, payload) => payload };
             if (name === '@google/genai')
                 return {
@@ -52,6 +59,7 @@ function harness({
                     sendToRenderer: (...args) => events.push(args),
                     initializeNewSession() {},
                     saveConversationTurn: (...args) => saved.push(args),
+                    saveScreenAnalysis: (...args) => savedAnalyses.push(args),
                     hasGroqKey: () => false,
                     getProfileSpeakerSilencePause: () => 1000,
                 };
@@ -65,6 +73,7 @@ function harness({
         segment: context.handleSpeechSegment,
         events,
         saved,
+        savedAnalyses,
         requests,
         summarizeRequests,
     };
@@ -158,6 +167,174 @@ test('failed transcription releases the queue for the next segment', async () =>
     assert.equal(h.saved[0][0], '[Interviewer]: Next question');
 });
 
+test('new screenshot capture becomes active and stores turn in shared history', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test');
+
+    const result = await h.api.handleHttpScreenshot('base64Image1Data', 'What does this diagram show?', '/fake/path/shot1.jpg');
+    assert.ok(result.success);
+    assert.equal(result.text, 'An answer.');
+
+    // Screenshot should be registered and active
+    const state = h.api.getAttachmentsState();
+    assert.equal(state.screenshots.length, 1);
+    assert.equal(state.activeAttachmentIds.length, 1);
+    assert.equal(state.activeAttachmentIds[0], result.imageId);
+
+    // Request should contain inlineData and prompt
+    assert.equal(h.requests.length, 1);
+    const parts = h.requests[0].contents[0].parts;
+    assert.ok(parts.some(p => p.inlineData && p.inlineData.data === 'base64Image1Data'));
+    assert.ok(parts.some(p => p.text === '[Screen Analysis]: What does this diagram show?'));
+
+    // Turns should be saved
+    assert.equal(h.saved.length, 1);
+    assert.equal(h.saved[0][0], '[Screen Analysis]: What does this diagram show?');
+    assert.equal(h.savedAnalyses.length, 1);
+});
+
+test('spoken and typed follow-ups include the active image', async () => {
+    const h = harness({
+        transcribe: async () => ({ text: 'Can you explain the right chart?' }),
+    });
+    await h.api.initializeGeminiHttpSession('test');
+
+    // Capture screenshot
+    await h.api.handleHttpScreenshot('base64ActiveImage', 'Analyze page', '/fake/path/shot.jpg');
+
+    // Typed follow-up
+    await h.api.sendTextToGeminiHttp('Can you focus on the header?');
+    assert.equal(h.requests.length, 2);
+    const typedParts = h.requests[1].contents[h.requests[1].contents.length - 1].parts;
+    assert.ok(typedParts.some(p => p.inlineData && p.inlineData.data === 'base64ActiveImage'));
+    assert.ok(typedParts.some(p => p.text === '[You]: Can you focus on the header?'));
+
+    // Spoken follow-up
+    await h.segment(audio, 'Interviewer');
+    assert.equal(h.requests.length, 3);
+    const spokenParts = h.requests[2].contents[h.requests[2].contents.length - 1].parts;
+    assert.ok(spokenParts.some(p => p.inlineData && p.inlineData.data === 'base64ActiveImage'));
+    assert.ok(spokenParts.some(p => p.text === '[Interviewer]: Can you explain the right chart?'));
+});
+
+test('removing an attachment excludes it from subsequent requests without deleting the original', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test');
+
+    const res = await h.api.handleHttpScreenshot('base64ImageData', 'Initial scan', '/fake/path/shot.jpg');
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds.length, 1);
+
+    // Remove attachment
+    h.api.removeAttachment(res.imageId);
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds.length, 0);
+    // Original screenshot is still preserved in session history
+    assert.equal(h.api.getAttachmentsState().screenshots.length, 1);
+
+    // Subsequent typed follow-up
+    await h.api.sendTextToGeminiHttp('General question without image');
+    assert.equal(h.requests.length, 2);
+    const parts = h.requests[1].contents[h.requests[1].contents.length - 1].parts;
+    assert.equal(parts.length, 1);
+    assert.equal(parts[0].text, '[You]: General question without image');
+    assert.ok(!parts.some(p => p.inlineData));
+});
+
+test('comparison selects and sends both screenshots with clear labels', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test');
+
+    const s1 = await h.api.handleHttpScreenshot('img1Base64', 'First screen', '/fake/shot1.jpg');
+    const s2 = await h.api.handleHttpScreenshot('img2Base64', 'Second screen', '/fake/shot2.jpg');
+
+    // Trigger comparison
+    h.api.compareWithPrevious();
+    const state = h.api.getAttachmentsState();
+    assert.equal(state.activeAttachmentIds.length, 2);
+    assert.equal(state.activeAttachmentIds[0], s2.imageId);
+    assert.equal(state.activeAttachmentIds[1], s1.imageId);
+
+    // Send comparison question
+    await h.api.sendTextToGeminiHttp('What changed between the two screens?');
+    assert.equal(h.requests.length, 3);
+    const userParts = h.requests[2].contents[h.requests[2].contents.length - 1].parts;
+
+    // Verify both images and labels exist in order
+    assert.ok(userParts.some(p => p.inlineData && p.inlineData.data === 'img2Base64'));
+    assert.ok(userParts.some(p => p.text === '[Attached Image 1 (Current)]'));
+    assert.ok(userParts.some(p => p.inlineData && p.inlineData.data === 'img1Base64'));
+    assert.ok(userParts.some(p => p.text === '[Attached Image 2 (Previous)]'));
+    assert.ok(userParts.some(p => p.text === '[You]: What changed between the two screens?'));
+});
+
+test('queued speech retains its snapshot of attachments from speech start time', async () => {
+    let release;
+    const h = harness({
+        transcribe: () =>
+            new Promise(resolve => {
+                release = resolve;
+            }),
+    });
+    await h.api.initializeGeminiHttpSession('test');
+
+    // First screenshot is active
+    await h.api.handleHttpScreenshot('img1Base64', 'First capture', '/fake/shot1.jpg');
+
+    // Speech starts while img1 is active (takes snapshot of [img1])
+    const speechPromise = h.segment(audio, 'Interviewer');
+
+    // While speech is transcribing, user takes a second screenshot (img2 becomes active)
+    await h.api.handleHttpScreenshot('img2Base64', 'Second capture', '/fake/shot2.jpg');
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds[0], h.api.getAttachmentsState().screenshots[1].id);
+
+    // Release transcription
+    release({ text: 'Question spoken while viewing first image' });
+    await speechPromise;
+    await settle();
+
+    // The speech request should have executed using img1Base64 (the snapshot at speech-time)
+    assert.equal(h.requests.length, 3);
+    const speechReq = h.requests[2];
+    const speechUserParts = speechReq.contents[speechReq.contents.length - 1].parts;
+    assert.ok(speechUserParts.some(p => p.inlineData && p.inlineData.data === 'img1Base64'));
+    assert.ok(!speechUserParts.some(p => p.inlineData && p.inlineData.data === 'img2Base64'));
+});
+
+test('missing image file produces a visible error without silently answering', async () => {
+    const customFs = {
+        existsSync: () => false,
+        readFileSync: () => {
+            throw new Error('ENOENT: no such file');
+        },
+    };
+    const h = harness({ mockFs: customFs });
+    await h.api.initializeGeminiHttpSession('test');
+
+    // Register a screenshot with a path that does not exist and no memory cache
+    h.api.registerScreenshot({ id: 'missing_img', path: '/deleted/screenshot.jpg', base64Data: null });
+
+    const result = await h.api.sendTextToGeminiHttp('Follow up on missing image');
+    assert.equal(result.success, false);
+    assert.match(result.error, /Screenshot file missing on disk/);
+
+    const errorEvent = h.events.find(e => e[0] === 'update-status' && String(e[1]).includes('Error:'));
+    assert.ok(errorEvent, 'Renderer should receive error status');
+});
+
+test('closing and resetting session clears active attachments and prevents stale updates', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test');
+
+    await h.api.handleHttpScreenshot('img1Base64', 'First screen', '/fake/shot1.jpg');
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds.length, 1);
+
+    h.api.closeGeminiHttpSession();
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds.length, 0);
+    assert.equal(h.api.getAttachmentsState().screenshots.length, 0);
+
+    await h.api.initializeGeminiHttpSession('test');
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds.length, 0);
+});
+
 test('retains context across more than 10 entries when within token budget', async () => {
     let questionIndex = 0;
     const h = harness({
@@ -166,17 +343,13 @@ test('retains context across more than 10 entries when within token budget', asy
     });
     await h.api.initializeGeminiHttpSession('test');
 
-    // Simulate 8 speech questions (creates 16 turns in history: 8 questions + 8 answers)
     for (let i = 0; i < 8; i++) {
         await h.segment(audio);
     }
 
-    // 9th question request should retain all preceding turns (8 user turns + 8 model turns + 1 current = 17 parts)
     assert.equal(h.requests.length, 8);
     const lastRequest = h.requests[7];
-    // With 7 previous question-answer pairs = 14 turns + 1 current question = 15 contents
     assert.equal(lastRequest.contents.length, 15);
-    // Roles should alternate user/model
     for (let i = 0; i < 14; i++) {
         assert.equal(lastRequest.contents[i].role, i % 2 === 0 ? 'user' : 'model');
     }
@@ -189,7 +362,6 @@ test('summarization is triggered when recent history exceeds token budget', asyn
     const h = harness({
         transcribe: async () => ({ text: `Question ${++questionIndex}: Here is a moderately detailed question about system design.` }),
         summarize: async () => ({ text: 'Summary of earlier architecture and design questions.' }),
-        // Small budget (e.g. 50 tokens) to trigger summarization quickly
         config: { httpRecentHistoryTokenBudget: 50, httpSummaryTargetTokens: 100 },
     });
     await h.api.initializeGeminiHttpSession('test');
@@ -202,11 +374,9 @@ test('summarization is triggered when recent history exceeds token budget', asyn
     const lastSummaryPrompt = h.summarizeRequests[0].contents[0].parts[0].text;
     assert.ok(lastSummaryPrompt.includes('Question 1'));
 
-    // The answer request should include the summary context message followed by recent turns
     const lastAnswerReq = h.requests[h.requests.length - 1];
     const summaryContextTurn = lastAnswerReq.contents.find(c => c.parts[0].text.includes('Summary of previous conversation'));
     assert.ok(summaryContextTurn, 'Request contents should include previous conversation summary');
-    // Full original history remains in storage
     assert.equal(h.saved.length, 5);
 });
 
@@ -220,7 +390,6 @@ test('typed and spoken questions use identical context handling and speaker labe
     await h.api.sendTextToGeminiHttp('Typed follow up question');
 
     assert.equal(h.requests.length, 2);
-    // Second request should have turn 0 (interviewer), turn 1 (model answer), turn 2 (typed user question)
     assert.equal(h.requests[1].contents[0].parts[0].text, '[Interviewer]: Spoken question from interviewer');
     assert.equal(h.requests[1].contents[1].parts[0].text, 'An answer.');
     assert.equal(h.requests[1].contents[2].parts[0].text, '[You]: Typed follow up question');
@@ -243,7 +412,6 @@ test('summarization failure gracefully falls back without crashing or dropping s
         await h.segment(audio);
     }
 
-    // Answers should still succeed despite summary failure
     assert.equal(h.requests.length, 4);
     assert.equal(h.saved.length, 4);
 });

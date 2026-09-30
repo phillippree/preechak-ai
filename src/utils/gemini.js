@@ -1569,6 +1569,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
+            if (currentProviderMode === 'byok_http') {
+                return await getGeminiHttp().handleHttpScreenshot(data, prompt, savedImagePath);
+            }
+
             const result = hasGroqKey()
                 ? await sendImageToGroq(data, prompt, savedImagePath)
                 : await sendImageToGeminiHttp(data, prompt, savedImagePath);
@@ -1577,6 +1581,30 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             console.error('Error sending image:', error);
             return { success: false, error: error.message };
         }
+    });
+
+    ipcMain.handle('gemini-http:get-attachments', () => {
+        return getGeminiHttp().getAttachmentsState();
+    });
+
+    ipcMain.handle('gemini-http:set-active-attachments', (event, ids) => {
+        return getGeminiHttp().setActiveAttachments(ids);
+    });
+
+    ipcMain.handle('gemini-http:remove-attachment', (event, id) => {
+        return getGeminiHttp().removeAttachment(id);
+    });
+
+    ipcMain.handle('gemini-http:compare-previous', () => {
+        return getGeminiHttp().compareWithPrevious();
+    });
+
+    ipcMain.handle('gemini-http:select-history-attachment', (event, id) => {
+        return getGeminiHttp().selectHistoryAttachment(id);
+    });
+
+    ipcMain.handle('gemini-http:clear-attachments', () => {
+        return getGeminiHttp().clearActiveAttachments();
     });
 
     ipcMain.handle('set-audio-mute-state', (event, { micMuted, speakerMuted }) => {

@@ -48,15 +48,29 @@ On the home screen:
 
 With a Groq key, the app can use Groq for responses; without one, Gemini is used directly for answers. Image questions require a model that supports images.
 
-### Gemini HTTP context management and token budgeting
+### Gemini HTTP context management, shared screenshots, and token budgeting
 
-In HTTP mode, speech segments are transcribed first, then answered with full conversation awareness:
+In HTTP mode, speech segments are transcribed first, then answered with full conversation awareness and optional active screenshot attachments:
 
+- **Shared Conversation Memory & Screenshot Context**:
+    - Spoken, typed, and screenshot exchanges share a unified conversation history with rolling summary and token budgeting.
+    - Capturing a screenshot automatically makes it the active image for subsequent spoken or typed follow-up questions until removed or replaced.
+    - Screenshots are stored once on disk; conversation turns store lightweight image references rather than duplicating Base64 data.
+    - Older screenshots contribute their discussion as text in subsequent turns without re-attaching raw image payloads unless explicitly selected.
+- **Attachment Controls**:
+    - Selected image thumbnails appear above the question input bar in `AssistantView`.
+    - **Remove (`✕`)**: Excludes an attachment from upcoming requests without deleting its saved file on disk.
+    - **Compare with previous (`⇆`)**: Attaches both the current and immediately preceding screenshots with explicit ordering labels (`[Attached Image 1 (Current)]`, `[Attached Image 2 (Previous)]`).
+    - **History Picker (`📷`)**: Allows selecting any earlier capture from the session (supporting up to 2 attached images).
+- **Queue Snapshotting & Request Correctness**:
+    - Spoken questions snapshot active attachments at speech segment start time so subsequent captures during transcription do not retroactively attach to older questions.
+    - Typed questions snapshot active attachments upon message submission.
+    - Session restarts or disconnects clear active attachments and discard queued requests.
 - **Token-budgeted recent history**: Retains recent complete exchanges up to a configurable budget (default: 4,000 tokens) in their original `user` and `model` roles.
 - **Running conversation summary**: When history exceeds the token budget, older exchanges are automatically condensed into a compact factual summary (target: 500 tokens) that is prepended to subsequent requests.
-- **Role & attribution preservation**: Summaries explicitly distinguish interviewer questions, the user's spoken statements (`[You]`), and AI-suggested answers without misattributing claims.
-- **Full history preservation**: Summarization only optimizes the in-flight context sent to the model; the full, uncompressed conversation turns and screenshots are always preserved in saved session storage.
+- **Role & attribution preservation**: Summaries explicitly distinguish interviewer questions, the user's spoken statements (`[You]`), screenshot analyses, and AI-suggested answers without misattributing claims.
 - **Cost vs. quality tradeoffs**:
+    - _Image tokens_: Each attached image contributes ~258 estimated tokens to the request context.
     - _Higher budget_ (e.g. 8,000 tokens): Better recall of exact phrasing in long sessions, higher per-request input token costs.
     - _Lower budget_ (e.g. 2,000 tokens): Lower token usage, triggers summarization sooner to condense older details.
 
@@ -65,7 +79,7 @@ Model and context configuration defaults:
 | Setting               | Default in this checkout        | Purpose                                                  |
 | --------------------- | ------------------------------- | -------------------------------------------------------- |
 | Gemini Live           | `gemini-3.1-flash-live-preview` | Live WebSocket streaming model                           |
-| Gemini HTTP Model     | `gemini-3.8-flash`              | HTTP REST model for transcription and answers            |
+| Gemini HTTP Model     | `gemini-3.8-flash`              | HTTP REST model for transcription, answers, and images   |
 | Recent History Budget | `4000` tokens                   | Maximum token allocation for recent conversational turns |
 | Summary Target        | `500` tokens                    | Target token length for the running background summary   |
 | Groq response model   | `qwen/qwen3.6-27b`              | Optional Groq answer generation model                    |
@@ -219,8 +233,4 @@ Build output goes under `out/`. Both `out/` and `node_modules/` are ignored by G
 
 Run the focused HTTP audio regression tests with `node --test tests/gemini-http.test.cjs`. These mock the provider and cover transcript display/storage, conversation context, queued speech, empty transcripts, failures, and session restarts. There is no typecheck script; `npm run lint` only prints a placeholder message.
 
-## License and third-party components
 
-This repository declares **GPL-3.0**; see [LICENSE](LICENSE). It includes bundled third-party components, including Lit, Marked, highlight.js, and SystemAudioDump. Preserve their applicable license and copyright notices.
-
-The macOS audio helper is credited to [SystemAudioDump / Sound](https://github.com/Mohammed-Yasin-Mulla/Sound).

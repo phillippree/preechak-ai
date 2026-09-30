@@ -788,6 +788,182 @@ export class AssistantView extends LitElement {
                 opacity: 1;
             }
         }
+
+        /* ── Attachment Controls Bar ── */
+        .attachment-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            flex-wrap: wrap;
+            position: relative;
+        }
+
+        .attachment-items {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .attachment-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg-surface);
+            border: 1px solid var(--accent, #6366f1);
+            border-radius: var(--radius-sm);
+            padding: 2px 6px 2px 4px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+            color: var(--text-primary);
+        }
+
+        .attachment-thumb {
+            width: 24px;
+            height: 24px;
+            object-fit: cover;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .attachment-label {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .attachment-remove-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            line-height: 1;
+            transition:
+                color 0.15s ease,
+                background 0.15s ease;
+        }
+
+        .attachment-remove-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        .attachment-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .attachment-action-btn {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: var(--radius-sm);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+
+        .attachment-action-btn:hover:not(:disabled) {
+            border-color: var(--accent);
+            color: var(--text-primary);
+            background: var(--bg-surface);
+        }
+
+        .attachment-action-btn:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+
+        .attachment-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* History Popover */
+        .history-picker-popover {
+            position: absolute;
+            bottom: 44px;
+            right: 14px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            width: 260px;
+            max-height: 220px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .history-picker-title {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .history-picker-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 6px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.02);
+            transition: all 0.15s ease;
+        }
+
+        .history-picker-item:hover {
+            background: var(--bg-hover);
+            border-color: var(--border);
+        }
+
+        .history-picker-item.selected {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .history-picker-thumb {
+            width: 32px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 3px;
+        }
+
+        .history-picker-info {
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+            overflow: hidden;
+        }
+
+        .history-picker-time {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
     `;
 
     static properties = {
@@ -806,6 +982,8 @@ export class AssistantView extends LitElement {
         previewImage: { type: String, state: true },
         isScrolledUp: { type: Boolean, state: true },
         hasNewMessagesWhileScrolled: { type: Boolean, state: true },
+        attachmentsState: { type: Object, state: true },
+        showHistoryPicker: { type: Boolean, state: true },
     };
 
     constructor() {
@@ -825,6 +1003,8 @@ export class AssistantView extends LitElement {
         this._animFrame = null;
         this.isScrolledUp = false;
         this.hasNewMessagesWhileScrolled = false;
+        this.attachmentsState = { activeAttachmentIds: [], activeAttachments: [], screenshots: [] };
+        this.showHistoryPicker = false;
     }
 
     getProfileNames() {
@@ -938,6 +1118,24 @@ export class AssistantView extends LitElement {
 
             ipcRenderer.on('scroll-response-up', this.handleScrollUp);
             ipcRenderer.on('scroll-response-down', this.handleScrollDown);
+
+            this.handleAttachmentsUpdated = (event, state) => {
+                if (state) {
+                    this.attachmentsState = state;
+                    this.requestUpdate();
+                }
+            };
+            ipcRenderer.on('gemini-http:attachments-updated', this.handleAttachmentsUpdated);
+
+            ipcRenderer
+                .invoke('gemini-http:get-attachments')
+                .then(state => {
+                    if (state) {
+                        this.attachmentsState = state;
+                        this.requestUpdate();
+                    }
+                })
+                .catch(() => {});
         }
     }
 
@@ -949,7 +1147,57 @@ export class AssistantView extends LitElement {
             const { ipcRenderer } = window.require('electron');
             if (this.handleScrollUp) ipcRenderer.removeListener('scroll-response-up', this.handleScrollUp);
             if (this.handleScrollDown) ipcRenderer.removeListener('scroll-response-down', this.handleScrollDown);
+            if (this.handleAttachmentsUpdated) ipcRenderer.removeListener('gemini-http:attachments-updated', this.handleAttachmentsUpdated);
         }
+    }
+
+    async handleRemoveAttachment(id) {
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const state = await ipcRenderer.invoke('gemini-http:remove-attachment', id);
+            if (state) {
+                this.attachmentsState = state;
+                this.requestUpdate();
+            }
+        }
+    }
+
+    async handleComparePrevious() {
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const state = await ipcRenderer.invoke('gemini-http:compare-previous');
+            if (state) {
+                this.attachmentsState = state;
+                this.requestUpdate();
+            }
+        }
+    }
+
+    async handleSelectHistoryAttachment(id) {
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const state = await ipcRenderer.invoke('gemini-http:select-history-attachment', id);
+            if (state) {
+                this.attachmentsState = state;
+                this.showHistoryPicker = false;
+                this.requestUpdate();
+            }
+        }
+    }
+
+    async handleClearAttachments() {
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const state = await ipcRenderer.invoke('gemini-http:clear-attachments');
+            if (state) {
+                this.attachmentsState = state;
+                this.requestUpdate();
+            }
+        }
+    }
+
+    toggleHistoryPicker() {
+        this.showHistoryPicker = !this.showHistoryPicker;
     }
 
     async handleSendText() {
@@ -1452,6 +1700,7 @@ export class AssistantView extends LitElement {
                       `
                     : ''
             }
+            ${this.renderAttachmentControls()}
 
             <div class="input-bar">
                 <div class="input-bar-inner">
@@ -1497,6 +1746,121 @@ export class AssistantView extends LitElement {
                       `
                     : ''
             }
+        `;
+    }
+
+    renderAttachmentControls() {
+        const state = this.attachmentsState || {};
+        const activeList = state.activeAttachments || [];
+        const allScreenshots = state.screenshots || [];
+        const hasActive = activeList.length > 0;
+        const hasScreenshots = allScreenshots.length > 0;
+
+        if (!hasActive && !hasScreenshots) return '';
+
+        return html`
+            <div class="attachment-bar">
+                <div class="attachment-items">
+                    ${activeList.map((item, index) => {
+                        const label = activeList.length > 1 ? (index === 0 ? 'Image 1 (Current)' : 'Image 2 (Previous)') : 'Active Screenshot';
+                        const imgSrc = item.path ? `file://${item.path}` : '';
+                        return html`
+                            <div class="attachment-pill">
+                                ${imgSrc ? html`<img src="${imgSrc}" class="attachment-thumb" alt="Thumb" @click=${() => (this.previewImage = imgSrc)} title="Click to preview screenshot" />` : ''}
+                                <span class="attachment-label">${label}</span>
+                                <button
+                                    class="attachment-remove-btn"
+                                    type="button"
+                                    @click=${() => this.handleRemoveAttachment(item.id)}
+                                    title="Remove attachment from next requests"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        `;
+                    })}
+                    ${hasActive ? html`<span class="attachment-hint">Follow-ups include active screenshot(s)</span>` : ''}
+                </div>
+
+                <div class="attachment-actions">
+                    ${
+                        allScreenshots.length >= 2
+                            ? html`
+                                  <button
+                                      class="attachment-action-btn"
+                                      type="button"
+                                      @click=${() => this.handleComparePrevious()}
+                                      title="Select current and immediately previous captures for comparison"
+                                  >
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                          <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+                                      </svg>
+                                      Compare with previous
+                                  </button>
+                              `
+                            : ''
+                    }
+                    ${
+                        allScreenshots.length > 0
+                            ? html`
+                                  <button
+                                      class="attachment-action-btn"
+                                      type="button"
+                                      @click=${() => this.toggleHistoryPicker()}
+                                      title="Choose a screenshot from session history"
+                                  >
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                          <circle cx="8.5" cy="8.5" r="1.5" />
+                                          <polyline points="21 15 16 10 5 21" />
+                                      </svg>
+                                      History (${allScreenshots.length})
+                                  </button>
+                              `
+                            : ''
+                    }
+                    ${
+                        hasActive
+                            ? html`
+                                  <button
+                                      class="attachment-action-btn"
+                                      type="button"
+                                      @click=${() => this.handleClearAttachments()}
+                                      title="Clear all active attachments"
+                                  >
+                                      Clear
+                                  </button>
+                              `
+                            : ''
+                    }
+                </div>
+
+                ${
+                    this.showHistoryPicker
+                        ? html`
+                              <div class="history-picker-popover" @click=${e => e.stopPropagation()}>
+                                  <div class="history-picker-title">Session Screenshots</div>
+                                  ${allScreenshots.map(item => {
+                                      const isSelected = (state.activeAttachmentIds || []).includes(item.id);
+                                      const imgSrc = item.path ? `file://${item.path}` : '';
+                                      return html`
+                                          <div
+                                              class="history-picker-item ${isSelected ? 'selected' : ''}"
+                                              @click=${() => this.handleSelectHistoryAttachment(item.id)}
+                                          >
+                                              ${imgSrc ? html`<img src="${imgSrc}" class="history-picker-thumb" alt="History thumb" />` : ''}
+                                              <div class="history-picker-info">
+                                                  <span>${item.id}</span>
+                                                  <span class="history-picker-time">${this.formatTime(item.timestamp)}</span>
+                                              </div>
+                                          </div>
+                                      `;
+                                  })}
+                              </div>
+                          `
+                        : ''
+                }
+            </div>
         `;
     }
 }
