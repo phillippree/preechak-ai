@@ -24,16 +24,17 @@ export class MainView extends LitElement {
 
         :host {
             height: 100%;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             padding: var(--space-xl) var(--space-lg);
         }
 
         .form-wrapper {
             width: 100%;
             max-width: 420px;
+            margin: auto 0;
             display: flex;
             flex-direction: column;
             gap: var(--space-md);
