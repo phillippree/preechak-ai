@@ -31,7 +31,7 @@ rules in mind as new files are created:
 - **Secure IPC** – validate and sanitize all parameters crossing the renderer/main
   boundary.
 - **Non‑blocking audio** – heavy processing must stay off the UI thread.
-- **Tests** – every new feature requires tests once the test suite is available.
+- **Tests** – always write relevant unit tests for any new feature implemented, and create or modify unit tests when resolving bugs.
 
 ## Shadcn and Electron
 
@@ -50,9 +50,9 @@ Follow these guidelines when working on UI code:
 
 ## Tests
 
-No automated tests yet. When a suite is added, run `npm test` before each
-commit. Until then, at minimum ensure `npm install` and `npm start` work after
-merging upstream changes.
+- **New Features** – Always write relevant unit tests for any new feature implemented.
+- **Bug Fixes** – Always add or modify unit tests covering the bug fix to prevent regressions.
+- **Execution** – Run tests and at minimum ensure `npm install` and `npm start` work after changes.
 
 ## Merging upstream PRs
 
@@ -62,7 +62,6 @@ cherry‑picked here. When merging:
 1. Inspect the diff and keep commit messages short (`feat:` / `fix:` etc.).
 2. After merging, run the application locally to verify it still builds and
    functions.
-
 
 ## Audio processing principles
 
@@ -94,9 +93,17 @@ There are placeholder files for future LLM integration (e.g. Qwen models via
 `llama.cpp`). Continue development after the core transcription pipeline is
 stable and ensure tests cover this new functionality.
 
+## Documentation Guidelines
+
+When implementing a new feature or resolving a bug:
+
+- **Check existing documentation** – Inspect the `documents/` folder to see if an existing file covers the relevant feature or bug.
+- **Update existing documents** – If a relevant file exists, modify it to document what was done and how the system works.
+- **Create new documents when needed** – If no relevant file exists, create a new `.md` file in `documents/` with a concise name of at most 2 words joined by a hyphen (e.g. `word1.md` for single words or `word1-word2.md` for two words).
+
 ## Pre-Execution Communication Guidelines
 
-Before making modifications or executing changes, you must always provide the following upfront communication (non-negotiable):
+Before making modifications or executing changes, you must always provide the following upfront communication and **always ask for confirmation before you implement (non-negotiable)**:
 
 ### 1. For Bugs & Fixes
 
@@ -104,6 +111,7 @@ Before applying any fixes, always explain:
 
 - **Findings**: What was identified as the root cause or issue.
 - **Action Plan**: What specific steps you will take to resolve it.
+- **Testing**: What unit tests will be added or modified to verify the fix and prevent regressions.
 
 ### 2. For New Features & Implementations
 
@@ -111,3 +119,8 @@ Before implementing any new feature, task, or requested changes, always explain:
 
 - **Plan**: Your overall strategy and approach for the implementation.
 - **Action Steps**: What concrete changes and steps you will carry out.
+- **Testing**: What relevant unit tests will be written to cover the new feature.
+
+### 3. Confirmation Required
+
+- **Always ask for confirmation before you implement (non-negotiable)**: Wait for explicit user confirmation before modifying code or executing changes.

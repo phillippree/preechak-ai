@@ -590,3 +590,119 @@ test('session close followed by reopen with whisper transcription mode successfu
         'Transcript must be included in conversation prompt'
     );
 });
+
+test('Gemini cloud transcription uses configured geminiHttpModel with verbatim instruction prompt and inline audio', async () => {
+    const h = harness({
+        preferences: { geminiHttpTranscriptionMode: 'gemini' },
+        config: {
+            geminiHttpModel: 'gemini-3.8-flash',
+        },
+    });
+
+    await h.api.initializeGeminiHttpSession('test', '', 'interview', 'en-US');
+    await h.segment(audio, 'Interviewer');
+    await settle();
+
+    assert.equal(h.geminiTranscribeRequests.length, 1, 'Should make 1 Gemini cloud transcription request');
+    const trReq = h.geminiTranscribeRequests[0];
+    assert.equal(trReq.model, 'gemini-3.8-flash', 'Must use configured geminiHttpModel');
+    assert.equal(trReq.contents[0].parts.length, 2, 'Must include inline audio and verbatim prompt');
+    assert.ok(trReq.contents[0].parts[0].inlineData, 'Must contain inline audio data');
+    assert.ok(trReq.contents[0].parts[1].text.includes('Transcribe the spoken words verbatim'));
+
+    // Answer request should follow
+    assert.equal(h.requests.length, 1, 'Should trigger answer request after valid transcription');
+    assert.equal(h.requests[0].model, 'gemini-3.8-flash', 'Answer request must use geminiHttpModel');
+});
+
+test('Gemini cloud transcription extracts text from candidate parts fallback when text property is missing', async () => {
+    const h = harness({
+        preferences: { geminiHttpTranscriptionMode: 'gemini' },
+        transcribe: async () => ({
+            candidates: [
+                {
+                    content: {
+                        parts: [
+                            {
+                                text: 'How does useEffect work?',
+                            },
+                        ],
+                    },
+                },
+            ],
+        }),
+    });
+
+    await h.api.initializeGeminiHttpSession('test', '', 'interview', 'en-US');
+    await h.segment(audio, 'Interviewer');
+    await settle();
+
+    assert.equal(h.requests.length, 1, 'Should generate answer from candidate parts');
+    const userParts = h.requests[0].contents[h.requests[0].contents.length - 1].parts;
+    assert.ok(
+        userParts.some(p => p.text && p.text.includes('How does useEffect work?')),
+        'Candidate text should be extracted into transcript'
+    );
+});
+
+test('Cloud transcription failure produces visible actionable error without silent fallback or answering', async () => {
+    const h = harness({
+        preferences: { geminiHttpTranscriptionMode: 'gemini' },
+        config: {
+            geminiHttpModel: 'gemini-3.8-flash',
+        },
+        transcribe: async () => {
+            throw new Error('Model not found or permission denied');
+        },
+    });
+
+    await h.api.initializeGeminiHttpSession('test');
+    await h.segment(audio, 'Interviewer');
+    await settle();
+
+    assert.equal(h.requests.length, 0, 'Must not call answer pipeline on transcription error');
+    const errEvent = h.events.find(e => e[0] === 'update-status' && String(e[1]).includes('Transcription failed (gemini-3.8-flash)'));
+    assert.ok(errEvent, 'Must emit actionable error identifying the model');
+});
+
+test('storage DEFAULT_PREFERENCES defaults vadEnergyThreshold to 95', () => {
+    const storage = require('../src/storage');
+    assert.equal(storage.DEFAULT_PREFERENCES.vadEnergyThreshold, 95, 'Default VAD energy threshold must be 95');
+});
+
+test('VAD ignores low-energy background noise below threshold and starts speech when energy exceeds threshold', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test');
+
+    // Generate 100ms 24kHz 16-bit mono PCM buffer of low amplitude (energy < 95)
+    // 2400 samples * 2 bytes = 4800 bytes
+    const lowEnergyChunk = Buffer.alloc(4800);
+    const lowSampleVal = 50; // amplitude 50 has RMS energy 50 (< 95)
+    for (let i = 0; i < lowEnergyChunk.length; i += 2) {
+        lowEnergyChunk.writeInt16LE(lowSampleVal, i);
+    }
+
+    // Feed low-energy chunks
+    h.api.processHttpAudioChunk(lowEnergyChunk, 'Interviewer');
+    h.api.processHttpAudioChunk(lowEnergyChunk, 'Interviewer');
+    await settle();
+
+    assert.ok(!h.events.some(e => e[0] === 'update-status' && String(e[1]).includes('speech detected')), 'Low energy must not trigger speech');
+
+    // Generate high-energy chunk (amplitude 3000, energy 3000 > 95)
+    const highEnergyChunk = Buffer.alloc(4800);
+    const highSampleVal = 3000;
+    for (let i = 0; i < highEnergyChunk.length; i += 2) {
+        highEnergyChunk.writeInt16LE(highSampleVal, i);
+    }
+
+    // Feed 2 high energy chunks (SPEECH_FRAMES_REQUIRED = 2)
+    h.api.processHttpAudioChunk(highEnergyChunk, 'Interviewer');
+    h.api.processHttpAudioChunk(highEnergyChunk, 'Interviewer');
+    await settle();
+
+    assert.ok(
+        h.events.some(e => e[0] === 'update-status' && String(e[1]).includes('speech detected')),
+        'High energy must trigger speech detected status'
+    );
+});

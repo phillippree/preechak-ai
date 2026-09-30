@@ -251,7 +251,7 @@ export class CustomizeView extends LitElement {
         this.audioMode = 'speaker_only';
         this.audioInputDevice = 'default';
         this.audioInputDevices = [];
-        this.vadEnergyThreshold = 60;
+        this.vadEnergyThreshold = 95;
         this.customPrompt = '';
         this.manualScreenshotPrompt = DEFAULT_SCREENSHOT_PROMPTS.interview;
         this.screenshotPrompts = { ...DEFAULT_SCREENSHOT_PROMPTS };
@@ -277,7 +277,7 @@ export class CustomizeView extends LitElement {
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
             this.audioInputDevice = prefs.audioInputDevice || 'default';
-            this.vadEnergyThreshold = prefs.vadEnergyThreshold ?? 60;
+            this.vadEnergyThreshold = prefs.vadEnergyThreshold ?? 95;
             this.customPrompt = prefs.customPrompt ?? '';
             this.theme = prefs.theme ?? 'dark';
             if (keybinds) {
@@ -791,7 +791,7 @@ export class CustomizeView extends LitElement {
                                 <span
                                     class="range-val"
                                     style="font-size: var(--font-size-xs); font-family: var(--font-mono); color: var(--text-primary); font-weight: var(--font-weight-semibold);"
-                                    >${this.vadEnergyThreshold || 60}</span
+                                    >${this.vadEnergyThreshold || 95}</span
                                 >
                             </div>
                             <input
@@ -800,7 +800,7 @@ export class CustomizeView extends LitElement {
                                 min="50"
                                 max="200"
                                 step="5"
-                                .value=${String(this.vadEnergyThreshold || 60)}
+                                .value=${String(this.vadEnergyThreshold || 95)}
                                 @input=${this.handleVadEnergyThresholdChange}
                             />
                             <div class="form-hint">

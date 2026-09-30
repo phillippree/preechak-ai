@@ -57,7 +57,7 @@ flowchart TD
 
 - Incoming audio chunks (100 ms duration, 24 kHz mono PCM) from system audio (`SystemAudioDump` on macOS / loopback on Windows) and microphone input are passed to `processHttpAudioChunk()` in `src/utils/gemini-http.js`.
 - The segmenter computes Root-Mean-Square (RMS) audio energy (`getPcmEnergy`).
-- When energy exceeds the threshold (`ENERGY_THRESHOLD = 60`), speech frames are accumulated.
+- When energy exceeds the threshold (`ENERGY_THRESHOLD = 95`), speech frames are accumulated.
 
 ### Step 2: Speech Pause & Boundary Detection
 

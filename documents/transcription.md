@@ -6,11 +6,11 @@ This document describes the source as reviewed on September 29, 2026. Transcript
 
 The app has three audio paths:
 
-| Session mode | Transcription | Answer generation |
-| --- | --- | --- |
-| Gemini Live / WebSocket | Gemini Live receives continuous audio and returns transcription events | Gemini Live, or Groq when configured |
-| Gemini HTTP | Local Whisper, Gemini cloud transcription, or no audio transcription | Existing HTTP answer pipeline: Gemini, or Groq when configured |
-| Local AI | Local Whisper through the existing combined local runtime | Local llama.cpp model |
+| Session mode            | Transcription                                                          | Answer generation                                              |
+| ----------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Gemini Live / WebSocket | Gemini Live receives continuous audio and returns transcription events | Gemini Live, or Groq when configured                           |
+| Gemini HTTP             | Local Whisper, Gemini cloud transcription, or no audio transcription   | Existing HTTP answer pipeline: Gemini, or Groq when configured |
+| Local AI                | Local Whisper through the existing combined local runtime              | Local llama.cpp model                                          |
 
 The source defaults to API-key mode with a WebSocket connection. For HTTP sessions, the current preference default is `geminiHttpTranscriptionMode: 'whisper'` and the Whisper model defaults to `base.en`. Saved preferences can override these values. Compatibility code also reads the older `geminiHttpLocalWhisper` preference when the mode field is absent.
 
@@ -113,9 +113,20 @@ If Whisper fails to start, HTTP session initialization fails visibly. A transcri
 
 ### Gemini cloud transcription
 
-The completed audio segment is sent to Gemini with instructions to transcribe the spoken words rather than answer them. The resulting transcript then enters the answer stage. Gemini-only HTTP mode therefore uses separate transcription and answer requests.
+When **Google Gemini Cloud** transcription is selected in HTTP mode, audio speech segments are transcribed by the configured Gemini HTTP model (`geminiHttpModel`, e.g. `gemini-3.8-flash`) using:
 
-For Gemini answers, the context builder includes recent conversation entries, any running summary, profile instructions, and applicable selected image attachments. Transcription itself does not need the full answer history.
+```http
+POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+```
+
+The request includes:
+
+- The 24 kHz mono 16-bit WAV buffer sent in memory as inline audio data (`audio/wav`).
+- Strict transcription instructions to output only the spoken words verbatim in their original language without commentary or answering.
+
+Once transcription completes, the resulting text is displayed with its speaker tag in the UI and passed to the separate answer pipeline (`generateContentStream`) with conversation history, persona instructions, and active screenshot attachments. This in-memory single-request design minimizes round-trip latency for fast conversational turns.
+
+If cloud transcription encounters an error, an actionable error is shown with the model identifier without silently proceeding to answer.
 
 ### No transcription
 
@@ -125,10 +136,10 @@ For Gemini answers, the context builder includes recent conversation entries, an
 
 There are two distinct components: the compiled engine and its speech model.
 
-| Component | Current source / preparation |
-| --- | --- |
-| HTTP Whisper engine | Build locally from `https://github.com/ggml-org/whisper.cpp.git` |
-| English speech models | Download from `https://huggingface.co/ggerganov/whisper.cpp` |
+| Component             | Current source / preparation                                     |
+| --------------------- | ---------------------------------------------------------------- |
+| HTTP Whisper engine   | Build locally from `https://github.com/ggml-org/whisper.cpp.git` |
+| English speech models | Download from `https://huggingface.co/ggerganov/whisper.cpp`     |
 
 `downloadWhisperComponents()` reuses a found engine and a model that passes its configured SHA-256 check. If the engine is missing, it calls `buildWhisperEngineFromSource()`; if the model is missing or invalid, it downloads the model.
 
@@ -163,11 +174,11 @@ The current source includes static-library build flags, auxiliary-file copying, 
 
 `<config-dir>` is outside the source repository:
 
-| Platform | Directory |
-| --- | --- |
-| macOS | `~/Library/Application Support/preechak-ai-config/` |
-| Windows | `%USERPROFILE%\AppData\Roaming\preechak-ai-config\` |
-| Linux | `~/.config/preechak-ai-config/` |
+| Platform | Directory                                           |
+| -------- | --------------------------------------------------- |
+| macOS    | `~/Library/Application Support/preechak-ai-config/` |
+| Windows  | `%USERPROFILE%\AppData\Roaming\preechak-ai-config\` |
+| Linux    | `~/.config/preechak-ai-config/`                     |
 
 ```text
 <config-dir>/
@@ -193,15 +204,15 @@ Do not assume changing the HTTP Whisper installer also changes the combined Loca
 
 ## Source map
 
-| Source file | Responsibility |
-| --- | --- |
-| `src/components/views/MainView.js` | Transcription selector, model selection, installation status, and progress controls |
-| `src/storage.js` | Default preferences, saved settings, and history files |
-| `src/utils/renderer.js` | Capture and renderer/background messages |
-| `src/utils/gemini.js` | Route audio into Live, HTTP, or Local AI paths |
-| `src/utils/gemini-http.js` | HTTP speech buffering, queues, engine selection, transcript display, and answer context |
-| `src/utils/whisper-runtime.js` | Standalone Whisper build/download/status, server lifecycle, resampling, and transcription requests |
-| `src/utils/localai.js` | Combined local Whisper + llama.cpp session |
-| `src/utils/native-ai-runtime.js` | Runtime/model preparation used by combined Local AI |
+| Source file                        | Responsibility                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/components/views/MainView.js` | Transcription selector, model selection, installation status, and progress controls                |
+| `src/storage.js`                   | Default preferences, saved settings, and history files                                             |
+| `src/utils/renderer.js`            | Capture and renderer/background messages                                                           |
+| `src/utils/gemini.js`              | Route audio into Live, HTTP, or Local AI paths                                                     |
+| `src/utils/gemini-http.js`         | HTTP speech buffering, queues, engine selection, transcript display, and answer context            |
+| `src/utils/whisper-runtime.js`     | Standalone Whisper build/download/status, server lifecycle, resampling, and transcription requests |
+| `src/utils/localai.js`             | Combined local Whisper + llama.cpp session                                                         |
+| `src/utils/native-ai-runtime.js`   | Runtime/model preparation used by combined Local AI                                                |
 
 This is a source-based description. No model download, compilation, server launch, or live transcription test was performed to produce it.

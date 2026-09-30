@@ -82,7 +82,7 @@ const DEFAULT_PREFERENCES = {
     whisperModel: 'base.en',
     geminiHttpLocalWhisper: false,
     geminiHttpTranscriptionMode: 'whisper',
-    vadEnergyThreshold: 60,
+    vadEnergyThreshold: 95,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults
