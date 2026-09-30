@@ -1142,7 +1142,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                         activeSpeaker = 'Interviewer';
                     }
                 } else if (lastSystemVoiceTime > 0 && currentActiveChannel === 'Interviewer' && !systemSilenceTimer) {
-                    const activeProf = sessionParams.profile || currentProfile || 'interview';
+                    const activeProf = sessionParams?.profile || currentProfile || 'interview';
                     const pauseDelay = getProfileSpeakerSilencePause(activeProf);
                     systemSilenceTimer = setTimeout(() => {
                         if (currentActiveChannel === 'Interviewer' && !isUserSpeakingOnMic) {
@@ -1392,7 +1392,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                     activeSpeaker = 'Interviewer';
                 }
             } else if (lastSystemVoiceTime > 0 && currentActiveChannel === 'Interviewer' && !systemSilenceTimer) {
-                const activeProf = sessionParams.profile || currentProfile || 'interview';
+                const activeProf = sessionParams?.profile || currentProfile || 'interview';
                 const pauseDelay = getProfileSpeakerSilencePause(activeProf);
                 systemSilenceTimer = setTimeout(() => {
                     if (currentActiveChannel === 'Interviewer' && !isUserSpeakingOnMic) {

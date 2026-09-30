@@ -185,8 +185,24 @@
         </style>
     </head>
     <body>
+        <script>
+            if (typeof module === 'object') {
+                window.__temp_module = module;
+                window.__temp_exports = exports;
+                window.module = undefined;
+                window.exports = undefined;
+            }
+        </script>
         <script src="assets/marked-4.3.0.min.js"></script>
         <script src="assets/highlight-11.9.0.min.js"></script>
+        <script>
+            if (window.__temp_module) {
+                window.module = window.__temp_module;
+                window.exports = window.__temp_exports;
+                delete window.__temp_module;
+                delete window.__temp_exports;
+            }
+        </script>
         <link rel="stylesheet" href="assets/highlight-vscode-dark.min.css" />
         <script type="module" src="components/app/PreechakAiApp.js"></script>
 

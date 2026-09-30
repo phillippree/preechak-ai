@@ -1,9 +1,12 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { unifiedPageStyles } from './sharedPageStyles.js';
+import { markdownStyles } from './markdownStyles.js';
+import { renderMarkdown, handleCodeCopyClick } from '../../utils/markdownRenderer.js';
 
 export class HistoryView extends LitElement {
     static styles = [
         unifiedPageStyles,
+        markdownStyles,
         css`
             .unified-page {
                 overflow-y: hidden;
@@ -386,6 +389,11 @@ export class HistoryView extends LitElement {
 
             .message-body {
                 white-space: pre-wrap;
+            }
+
+            .message-body.markdown-body,
+            .message-body .markdown-body {
+                white-space: normal;
             }
 
             .message-meta {
@@ -1037,7 +1045,11 @@ export class HistoryView extends LitElement {
                 return html`
                     <div class="message-row ${msg.type}">
                         <div class="message">
-                            <div class="message-body">${msg.type === 'user' ? this.renderFormattedUserMessage(msg.content) : msg.content}</div>
+                            ${
+                                msg.type === 'user'
+                                    ? html`<div class="message-body">${this.renderFormattedUserMessage(msg.content)}</div>`
+                                    : html`<div class="message-body markdown-body" .innerHTML=${renderMarkdown(msg.content)}></div>`
+                            }
                             <div class="message-meta">${this.formatTime(msg.timestamp)}</div>
                         </div>
                     </div>
@@ -1078,7 +1090,7 @@ export class HistoryView extends LitElement {
                                 }
                             </div>
                             ${entry.prompt ? html`<div class="history-prompt-quote">${entry.prompt}</div>` : ''}
-                            <div class="message-body">${entry.response || ''}</div>
+                            <div class="message-body markdown-body" .innerHTML=${renderMarkdown(entry.response || '')}></div>
                             <div class="message-meta">${this.formatTime(entry.timestamp)}${entry.model ? ` · ${entry.model}` : ''}</div>
                         </div>
                     </div>
@@ -1404,8 +1416,12 @@ export class HistoryView extends LitElement {
                     Context
                 </button>
             </div>
-            <section class="details-scroll">${this.renderTabContent()}</section>
+            <section class="details-scroll" @click=${this.handleContentClick}>${this.renderTabContent()}</section>
         `;
+    }
+
+    handleContentClick(e) {
+        handleCodeCopyClick(e);
     }
 
     render() {
