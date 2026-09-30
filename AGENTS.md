@@ -63,38 +63,6 @@ cherry‑picked here. When merging:
 2. After merging, run the application locally to verify it still builds and
    functions.
 
-## Strategy and Future Work
-
-We plan to extend this project with ideas from the
-[`transcriber`](https://github.com/Gatecrashah/transcriber) project which also
-uses Electron. Key goals are:
-
-- **Local Transcription** – integrate `whisper.cpp` to allow offline speech-to-
-  text. Investigate the architecture used in `transcriber/src/main` for model
-  validation and GPU acceleration.
-- **Dual Audio Capture** – capture microphone and system audio simultaneously.
-  `transcriber` shows one approach using a native helper for macOS and
-  Electron's `getDisplayMedia` for other platforms.
-- **Speaker Diarization** – explore tinydiarize for identifying speakers in mono
-  audio streams.
-- **Voice Activity Detection** – skip silent or low‑quality segments before
-  sending to the AI service.
-- **Improved Note Handling** – store transcriptions locally and associate them
-  with meeting notes, similar to `transcriber`'s note management system.
-- **Testing Infrastructure** – adopt Jest and React Testing Library (if React is
-  introduced) to cover audio capture and transcription modules.
-
-### TODO
-
-1. Research and prototype local transcription using `whisper.cpp`.
-2. Add dual‑stream audio capture logic for cross‑platform support.
-3. Investigate speaker diarization options and integrate when feasible.
-4. Plan a migration path toward a proper testing setup (Jest or similar).
-5. Document security considerations for audio storage and processing.
-6. Rebuild the entire UI using shadcn components.
-
-These plans are aspirational; implement them gradually while keeping the app
-functional.
 
 ## Audio processing principles
 
