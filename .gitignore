@@ -93,3 +93,7 @@ typings/
 out/
 .specstory
 .specstory/
+
+# Agents
+.agents/
+.agents

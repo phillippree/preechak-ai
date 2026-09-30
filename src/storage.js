@@ -673,6 +673,7 @@ module.exports = {
     setGroqApiKey,
 
     // Preferences
+    DEFAULT_PREFERENCES,
     DEFAULT_MANUAL_SCREENSHOT_PROMPT,
     DEFAULT_SCREENSHOT_PROMPTS,
     DEFAULT_CUSTOM_PROMPTS,

@@ -125,3 +125,21 @@ When implementing transcription features borrow the following rules from
 There are placeholder files for future LLM integration (e.g. Qwen models via
 `llama.cpp`). Continue development after the core transcription pipeline is
 stable and ensure tests cover this new functionality.
+
+## Pre-Execution Communication Guidelines
+
+Before making modifications or executing changes, you must always provide the following upfront communication (non-negotiable):
+
+### 1. For Bugs & Fixes
+
+Before applying any fixes, always explain:
+
+- **Findings**: What was identified as the root cause or issue.
+- **Action Plan**: What specific steps you will take to resolve it.
+
+### 2. For New Features & Implementations
+
+Before implementing any new feature, task, or requested changes, always explain:
+
+- **Plan**: Your overall strategy and approach for the implementation.
+- **Action Steps**: What concrete changes and steps you will carry out.
