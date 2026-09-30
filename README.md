@@ -48,6 +48,27 @@ On the home screen:
 
 With a Groq key, the app can use Groq for responses; without one, Gemini is used directly for answers. Image questions require a model that supports images.
 
+### Optional local Whisper transcription for Gemini HTTP
+
+Under **Gemini API & Connection → Connection Mode: Buffered Requests (HTTP)**, you can enable **“Transcribe locally with Whisper”**:
+
+- **Audio privacy & hybrid workflow**: Audio is captured and transcribed entirely on your local machine using native `whisper.cpp`. The recognized transcript text (not your raw audio) is then forwarded to your configured remote answer provider (Gemini HTTP or Groq).
+- **Standalone runner isolation**: Unlike full Local AI mode, enabling local Whisper transcription starts only the `whisper.cpp` server process and leaves `llama.cpp` offline, keeping memory and CPU footprint low.
+- **Verified Upstream Sources & Speech Models**:
+    - Speech models are downloaded directly from the official Hugging Face repository ([`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp)):
+        - `tiny.en` (~75 MB): `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin`
+        - `base.en` (~142 MB): `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin`
+        - `small.en` (~466 MB): `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin`
+- **Whisper Server Engine Requirements & Platform Support**:
+    - **macOS**: Official `whisper.cpp` GitHub releases do not publish standalone prebuilt server executables for macOS (only `xcframework.zip` libraries). You can install `whisper-server` via Homebrew (`brew install whisper-cpp`) or compile it from official source ([`ggml-org/whisper.cpp`](https://github.com/ggml-org/whisper.cpp)), then copy or symlink `whisper-server` into `<config-dir>/binaries/` or ensure it is on your system `PATH`.
+    - **Engine discovery**: The app searches `<config-dir>/binaries/` followed by standard PATH directories (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`).
+- **Download manager & integrity checks**:
+    - Separate status indicators are shown for the **Whisper engine** and the selected **Speech model** (`Ready`, `Not downloaded`, `Downloading`, `Verifying`, `Needs repair`, `Unsupported / Manual setup required`).
+    - Model downloads use temporary `.part` files and verify SHA256 checksums before promoting files to active use.
+    - Includes real-time progress indicators (bytes downloaded and percentage), **Cancel**, **Retry**, **Open download folder**, and safe **Remove model** controls.
+    - Downloaded files are stored in `<config-dir>/binaries/` and `<config-dir>/models/whisper/`.
+- **Failure handling**: If local Whisper encounters an error, an actionable notification is displayed. The system will never silently upload audio to Gemini when local transcription is selected.
+
 ### Gemini HTTP context management, shared screenshots, and token budgeting
 
 In HTTP mode, speech segments are transcribed first, then answered with full conversation awareness and optional active screenshot attachments:

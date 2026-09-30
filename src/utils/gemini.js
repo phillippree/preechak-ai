@@ -1607,6 +1607,63 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return getGeminiHttp().clearActiveAttachments();
     });
 
+    // ============ WHISPER RUNTIME ============
+    ipcMain.handle('whisper:get-status', async (event, { modelName } = {}) => {
+        try {
+            const whisperRuntime = require('./whisper-runtime');
+            const status = await whisperRuntime.getWhisperStatus(modelName);
+            return { success: true, data: status };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('whisper:download', async (event, { modelName } = {}) => {
+        try {
+            const whisperRuntime = require('./whisper-runtime');
+            const result = await whisperRuntime.downloadWhisperComponents(modelName, progress => {
+                sendToRenderer('whisper:download-progress', progress);
+            });
+            const status = await whisperRuntime.getWhisperStatus(modelName);
+            sendToRenderer('whisper:status-updated', status);
+            return { success: true, data: result };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('whisper:cancel-download', async () => {
+        try {
+            const whisperRuntime = require('./whisper-runtime');
+            const cancelled = whisperRuntime.cancelWhisperDownload();
+            return { success: true, cancelled };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('whisper:delete-model', async (event, { modelName } = {}) => {
+        try {
+            const whisperRuntime = require('./whisper-runtime');
+            const result = await whisperRuntime.deleteWhisperModel(modelName);
+            const status = await whisperRuntime.getWhisperStatus(modelName);
+            sendToRenderer('whisper:status-updated', status);
+            return { success: true, ...result };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('whisper:open-folder', async () => {
+        try {
+            const whisperRuntime = require('./whisper-runtime');
+            await whisperRuntime.openWhisperFolder();
+            return { success: true };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
     ipcMain.handle('set-audio-mute-state', (event, { micMuted, speakerMuted }) => {
         if (micMuted !== undefined) isMicMuted = !!micMuted;
         if (speakerMuted !== undefined) isSpeakerMuted = !!speakerMuted;

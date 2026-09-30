@@ -1313,6 +1313,36 @@ const preechakAi = {
     // Theme API
     theme,
 
+    // Whisper Runtime API
+    whisper: {
+        getStatus: async modelName => {
+            const res = await ipcRenderer.invoke('whisper:get-status', { modelName });
+            return res.success ? res.data : null;
+        },
+        download: async modelName => {
+            return ipcRenderer.invoke('whisper:download', { modelName });
+        },
+        cancelDownload: async () => {
+            return ipcRenderer.invoke('whisper:cancel-download');
+        },
+        deleteModel: async modelName => {
+            return ipcRenderer.invoke('whisper:delete-model', { modelName });
+        },
+        openFolder: async () => {
+            return ipcRenderer.invoke('whisper:open-folder');
+        },
+        onDownloadProgress: callback => {
+            const listener = (event, progress) => callback(progress);
+            ipcRenderer.on('whisper:download-progress', listener);
+            return () => ipcRenderer.removeListener('whisper:download-progress', listener);
+        },
+        onStatusUpdated: callback => {
+            const listener = (event, status) => callback(status);
+            ipcRenderer.on('whisper:status-updated', listener);
+            return () => ipcRenderer.removeListener('whisper:status-updated', listener);
+        },
+    },
+
     // Refresh preferences cache (call after updating preferences)
     refreshPreferencesCache: loadPreferencesCache,
 

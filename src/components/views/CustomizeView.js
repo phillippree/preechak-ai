@@ -221,6 +221,7 @@ export class CustomizeView extends LitElement {
         audioMode: { type: String },
         audioInputDevice: { type: String },
         audioInputDevices: { type: Array, state: true },
+        vadEnergyThreshold: { type: Number },
         isClearing: { type: Boolean },
         isRestoring: { type: Boolean },
         clearStatusMessage: { type: String },
@@ -250,6 +251,7 @@ export class CustomizeView extends LitElement {
         this.audioMode = 'speaker_only';
         this.audioInputDevice = 'default';
         this.audioInputDevices = [];
+        this.vadEnergyThreshold = 60;
         this.customPrompt = '';
         this.manualScreenshotPrompt = DEFAULT_SCREENSHOT_PROMPTS.interview;
         this.screenshotPrompts = { ...DEFAULT_SCREENSHOT_PROMPTS };
@@ -275,6 +277,7 @@ export class CustomizeView extends LitElement {
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
             this.audioInputDevice = prefs.audioInputDevice || 'default';
+            this.vadEnergyThreshold = prefs.vadEnergyThreshold ?? 60;
             this.customPrompt = prefs.customPrompt ?? '';
             this.theme = prefs.theme ?? 'dark';
             if (keybinds) {
@@ -454,6 +457,13 @@ export class CustomizeView extends LitElement {
     async handleCustomPromptInput(e) {
         this.customPrompt = e.target.value;
         await preechakAi.storage.updatePreference('customPrompt', this.customPrompt);
+    }
+
+    async handleVadEnergyThresholdChange(e) {
+        const val = parseInt(e.target.value, 10) || 60;
+        this.vadEnergyThreshold = Math.max(50, Math.min(200, val));
+        await preechakAi.storage.updatePreference('vadEnergyThreshold', this.vadEnergyThreshold);
+        this.requestUpdate();
     }
 
     async handleAudioModeSelect(e) {
@@ -773,6 +783,31 @@ export class CustomizeView extends LitElement {
                             <option value="medium">Medium Quality</option>
                             <option value="low">Low Quality</option>
                         </select>
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <div class="slider-wrap">
+                            <div class="slider-header">
+                                <label class="form-label" style="margin: 0;">Voice Detection Threshold (VAD Sensitivity)</label>
+                                <span
+                                    class="range-val"
+                                    style="font-size: var(--font-size-xs); font-family: var(--font-mono); color: var(--text-primary); font-weight: var(--font-weight-semibold);"
+                                    >${this.vadEnergyThreshold || 60}</span
+                                >
+                            </div>
+                            <input
+                                type="range"
+                                class="control range-input"
+                                min="50"
+                                max="200"
+                                step="5"
+                                .value=${String(this.vadEnergyThreshold || 60)}
+                                @input=${this.handleVadEnergyThresholdChange}
+                            />
+                            <div class="form-hint">
+                                Controls audio energy required to detect speech (50–200). Lower (50–70) detects quiet speech; higher (100–200) filters
+                                out background noise, fans, and breathing.
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

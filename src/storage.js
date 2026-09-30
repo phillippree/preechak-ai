@@ -79,7 +79,10 @@ const DEFAULT_PREFERENCES = {
     stealthMode: true,
     googleSearchEnabled: false,
     localLlmModel: 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M',
-    whisperModel: 'tiny.en',
+    whisperModel: 'base.en',
+    geminiHttpLocalWhisper: false,
+    geminiHttpTranscriptionMode: 'whisper',
+    vadEnergyThreshold: 60,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults

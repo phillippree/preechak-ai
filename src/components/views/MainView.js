@@ -317,6 +317,203 @@ export class MainView extends LitElement {
             }
         }
 
+        /* ── Local Whisper in HTTP Mode ── */
+
+        .whisper-settings-box {
+            margin-top: var(--space-xs);
+            padding: var(--space-sm);
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+
+        .whisper-status-card {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+        }
+
+        .whisper-status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: var(--font-size-xs);
+        }
+
+        .whisper-status-label {
+            color: var(--text-secondary);
+            font-weight: var(--font-weight-medium);
+        }
+
+        .whisper-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: var(--font-weight-medium);
+        }
+
+        .badge-ready {
+            background: rgba(34, 197, 94, 0.12);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.25);
+        }
+
+        .badge-not_downloaded {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+
+        .badge-downloading {
+            background: rgba(59, 130, 246, 0.12);
+            color: var(--accent);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+
+        .badge-verifying {
+            background: rgba(168, 85, 247, 0.12);
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.25);
+        }
+
+        .badge-needs_repair {
+            background: rgba(212, 160, 23, 0.12);
+            color: #eab308;
+            border: 1px solid rgba(212, 160, 23, 0.25);
+        }
+
+        .badge-unsupported {
+            background: rgba(239, 68, 68, 0.12);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.25);
+        }
+
+        .whisper-progress-container {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 4px 0;
+        }
+
+        .whisper-progress-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+        }
+
+        .whisper-progress-bar-track {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-app);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .whisper-progress-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 150ms ease;
+        }
+
+        .whisper-progress-bar-fill.indeterminate {
+            width: 40%;
+            animation: indeterminate-slide 1.5s infinite ease-in-out;
+        }
+
+        @keyframes indeterminate-slide {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(300%);
+            }
+        }
+
+        .whisper-buttons-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--space-xs);
+            margin-top: 4px;
+        }
+
+        .btn-action-sm {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            padding: 5px 10px;
+            border-radius: var(--radius-sm);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-medium);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition:
+                background var(--transition),
+                border-color var(--transition);
+        }
+
+        .btn-action-sm:hover:not(:disabled) {
+            background: var(--bg-elevated);
+            border-color: var(--border-strong);
+        }
+
+        .btn-action-sm:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-action-sm.primary {
+            background: #e8e8e8;
+            border-color: #e8e8e8;
+            color: #111111;
+            font-weight: var(--font-weight-semibold);
+        }
+
+        .btn-action-sm.primary:hover:not(:disabled) {
+            background: #ffffff;
+            border-color: #ffffff;
+            color: #000000;
+        }
+
+        .btn-action-sm.danger {
+            color: var(--danger);
+            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.06);
+        }
+
+        .btn-action-sm.danger:hover:not(:disabled) {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: var(--danger);
+        }
+
+        .confirm-delete-box {
+            padding: 8px 10px;
+            border-radius: var(--radius-sm);
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            font-size: var(--font-size-xs);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
         /* ── Start button ── */
 
         .start-button {
@@ -732,6 +929,7 @@ export class MainView extends LitElement {
         whisperDownloading: { type: Boolean },
         downloadProgress: { type: Object },
         onCancelDownload: { type: Function },
+        isSessionActive: { type: Boolean },
         // Internal state
         _mode: { state: true },
         _token: { state: true },
@@ -741,15 +939,22 @@ export class MainView extends LitElement {
         _apiTransportMode: { state: true },
         _geminiLiveModel: { state: true },
         _geminiHttpModel: { state: true },
+        _geminiHttpLocalWhisper: { state: true },
+        _geminiHttpTranscriptionMode: { state: true },
         _groqModel: { state: true },
         _groqImageModel: { state: true },
         _disableGroqThinking: { state: true },
         _tokenError: { state: true },
         _keyError: { state: true },
-        // Local AI state
+        // Local AI & Whisper state
         _localLlmModel: { state: true },
         _useCustomLocalLlmModel: { state: true },
         _whisperModel: { state: true },
+        _whisperStatus: { state: true },
+        _whisperDownloadState: { state: true },
+        _isWhisperDownloading: { state: true },
+        _confirmDeleteModel: { state: true },
+        _whisperActionError: { state: true },
         _showLocalHelp: { state: true },
     };
 
@@ -763,6 +968,7 @@ export class MainView extends LitElement {
         this.whisperDownloading = false;
         this.downloadProgress = { active: false, label: '', percentage: null };
         this.onCancelDownload = () => {};
+        this.isSessionActive = false;
 
         this._mode = 'byok';
         this._token = '';
@@ -772,6 +978,8 @@ export class MainView extends LitElement {
         this._apiTransportMode = 'websocket';
         this._geminiLiveModel = 'gemini-3.1-flash-live-preview';
         this._geminiHttpModel = 'gemini-3.8-flash';
+        this._geminiHttpLocalWhisper = false;
+        this._geminiHttpTranscriptionMode = 'whisper';
         this._groqModel = 'qwen/qwen3.6-27b';
         this._groqImageModel = 'qwen/qwen3.6-27b';
         this._disableGroqThinking = true;
@@ -780,7 +988,12 @@ export class MainView extends LitElement {
         this._showLocalHelp = false;
         this._localLlmModel = 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M';
         this._useCustomLocalLlmModel = false;
-        this._whisperModel = 'tiny.en';
+        this._whisperModel = 'base.en';
+        this._whisperStatus = null;
+        this._whisperDownloadState = null;
+        this._isWhisperDownloading = false;
+        this._confirmDeleteModel = false;
+        this._whisperActionError = null;
 
         this._animId = null;
         this._time = 0;
@@ -821,9 +1034,15 @@ export class MainView extends LitElement {
             // Load local AI settings
             this._localLlmModel = prefs.localLlmModel || 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M';
             this._useCustomLocalLlmModel = !LOCAL_LLM_PRESETS.some(preset => preset.value === this._localLlmModel);
-            this._whisperModel = prefs.whisperModel || 'tiny.en';
+            this._whisperModel = prefs.whisperModel || 'base.en';
+            this._geminiHttpTranscriptionMode = prefs.geminiHttpTranscriptionMode || (prefs.geminiHttpLocalWhisper === true ? 'whisper' : 'whisper');
+            this._geminiHttpLocalWhisper = this._geminiHttpTranscriptionMode === 'whisper';
 
             this.requestUpdate();
+
+            if (this._geminiHttpLocalWhisper || this._mode === 'local') {
+                this._checkWhisperStatus();
+            }
         } catch (e) {
             console.error('Error loading MainView storage:', e);
         }
@@ -832,12 +1051,28 @@ export class MainView extends LitElement {
     connectedCallback() {
         super.connectedCallback();
         document.addEventListener('keydown', this.boundKeydownHandler);
+
+        if (typeof preechakAi !== 'undefined' && preechakAi.whisper) {
+            this._unsubscribeWhisperProgress = preechakAi.whisper.onDownloadProgress?.(p => {
+                this._whisperDownloadState = p;
+                this._isWhisperDownloading = true;
+                this.requestUpdate();
+            });
+            this._unsubscribeWhisperStatus = preechakAi.whisper.onStatusUpdated?.(s => {
+                this._whisperStatus = s;
+                this._isWhisperDownloading = false;
+                this._whisperDownloadState = null;
+                this.requestUpdate();
+            });
+        }
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         document.removeEventListener('keydown', this.boundKeydownHandler);
         if (this._animId) cancelAnimationFrame(this._animId);
+        if (this._unsubscribeWhisperProgress) this._unsubscribeWhisperProgress();
+        if (this._unsubscribeWhisperStatus) this._unsubscribeWhisperStatus();
     }
 
     updated(changedProperties) {
@@ -1057,6 +1292,273 @@ export class MainView extends LitElement {
         this._whisperModel = val;
         await preechakAi.storage.updatePreference('whisperModel', val);
         this.requestUpdate();
+        await this._checkWhisperStatus(val);
+        if (this._geminiHttpLocalWhisper) {
+            const engineReady = this._whisperStatus?.engine?.status === 'ready';
+            const modelReady = this._whisperStatus?.model?.status === 'ready';
+            if (!engineReady || !modelReady) {
+                void this._downloadWhisper();
+            }
+        }
+    }
+
+    async _saveGeminiHttpTranscriptionMode(val) {
+        this._geminiHttpTranscriptionMode = val;
+        this._geminiHttpLocalWhisper = val === 'whisper';
+        await Promise.all([
+            preechakAi.storage.updatePreference('geminiHttpTranscriptionMode', val),
+            preechakAi.storage.updatePreference('geminiHttpLocalWhisper', val === 'whisper'),
+        ]);
+        this.requestUpdate();
+        if (val === 'whisper') {
+            await this._checkWhisperStatus();
+            const engineReady = this._whisperStatus?.engine?.status === 'ready';
+            const modelReady = this._whisperStatus?.model?.status === 'ready';
+            if (!engineReady || !modelReady) {
+                void this._downloadWhisper();
+            }
+        }
+    }
+
+    async _saveGeminiHttpLocalWhisper(val) {
+        return this._saveGeminiHttpTranscriptionMode(val ? 'whisper' : 'gemini');
+    }
+
+    async _checkWhisperStatus(modelName = null) {
+        const modelToCheck = modelName || this._whisperModel || 'base.en';
+        if (typeof preechakAi === 'undefined' || !preechakAi.whisper) return;
+        this._isCheckingWhisper = true;
+        this.requestUpdate();
+        try {
+            const status = await preechakAi.whisper.getStatus(modelToCheck);
+            this._whisperStatus = status;
+        } catch (err) {
+            console.warn('Error checking whisper status:', err);
+        } finally {
+            this._isCheckingWhisper = false;
+            this.requestUpdate();
+        }
+    }
+
+    async _downloadWhisper() {
+        if (typeof preechakAi === 'undefined' || !preechakAi.whisper) return;
+        this._isWhisperDownloading = true;
+        this._whisperActionError = null;
+        this.requestUpdate();
+        try {
+            const res = await preechakAi.whisper.download(this._whisperModel);
+            if (!res.success) {
+                this._whisperActionError = res.error || 'Download failed';
+            }
+        } catch (err) {
+            this._whisperActionError = err.message;
+        } finally {
+            this._isWhisperDownloading = false;
+            await this._checkWhisperStatus();
+        }
+    }
+
+    async _cancelWhisperDownload() {
+        if (typeof preechakAi === 'undefined' || !preechakAi.whisper) return;
+        try {
+            await preechakAi.whisper.cancelDownload();
+        } catch (e) {}
+        this._isWhisperDownloading = false;
+        this._whisperDownloadState = null;
+        await this._checkWhisperStatus();
+    }
+
+    async _handleDeleteWhisperModel() {
+        if (typeof preechakAi === 'undefined' || !preechakAi.whisper) return;
+        this._confirmDeleteModel = false;
+        try {
+            const res = await preechakAi.whisper.deleteModel(this._whisperModel);
+            if (!res.success) {
+                this._whisperActionError = res.error || 'Deletion failed';
+            }
+        } catch (err) {
+            this._whisperActionError = err.message;
+        }
+        await this._checkWhisperStatus();
+    }
+
+    async _openWhisperFolder() {
+        if (typeof preechakAi === 'undefined' || !preechakAi.whisper) return;
+        await preechakAi.whisper.openFolder();
+    }
+
+    _renderStatusBadge(status) {
+        const labels = {
+            ready: 'Ready',
+            not_downloaded: 'Not downloaded',
+            downloading: 'Downloading…',
+            verifying: 'Verifying…',
+            needs_repair: 'Needs repair',
+            unsupported: 'Unsupported',
+            checking: 'Checking…',
+        };
+        const displayLabel = labels[status] || status || 'Not downloaded';
+        const badgeClass = `whisper-badge badge-${status || 'not_downloaded'}`;
+        return html`<span class="${badgeClass}">${displayLabel}</span>`;
+    }
+
+    _formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '0 MB';
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    _renderWhisperSection() {
+        const engine = this._whisperStatus?.engine;
+        const model = this._whisperStatus?.model;
+        const engineReady = engine?.status === 'ready';
+        const modelReady = model?.status === 'ready';
+        const isDownloading = this._isWhisperDownloading || engine?.status === 'downloading' || model?.status === 'downloading';
+        const needsDownload = !engineReady || !modelReady;
+        const needsRepair = engine?.status === 'needs_repair' || model?.status === 'needs_repair';
+        const downloadProgress = this._whisperDownloadState;
+
+        return html`
+            <div class="whisper-settings-box" role="region" aria-label="Whisper local transcription settings">
+                <div class="form-group">
+                    <div class="whisper-label-row">
+                        <label class="form-label">Whisper Speech Model (English only)</label>
+                        ${this._isCheckingWhisper ? html`<div class="whisper-spinner"></div>` : ''}
+                    </div>
+                    <select
+                        .value=${this._whisperModel}
+                        ?disabled=${this.isSessionActive || isDownloading}
+                        @change=${e => {
+                            this._saveWhisperModel(e.target.value);
+                            this._checkWhisperStatus(e.target.value);
+                        }}
+                    >
+                        <option value="tiny.en" ?selected=${this._whisperModel === 'tiny.en'}>Tiny English (75 MB · Fastest)</option>
+                        <option value="base.en" ?selected=${this._whisperModel === 'base.en'}>Base English (142 MB · Recommended)</option>
+                        <option value="small.en" ?selected=${this._whisperModel === 'small.en'}>Small English (466 MB · Most accurate)</option>
+                    </select>
+                    <div class="form-hint">English models only. Transcription speed depends on your local CPU / GPU hardware.</div>
+                </div>
+
+                <div class="whisper-status-card">
+                    <div class="whisper-status-row">
+                        <span class="whisper-status-label">Whisper engine:</span>
+                        ${this._renderStatusBadge(this._isCheckingWhisper ? 'checking' : engine?.status)}
+                    </div>
+                    <div class="whisper-status-row">
+                        <span class="whisper-status-label">${model?.name || 'Selected model'}:</span>
+                        ${this._renderStatusBadge(this._isCheckingWhisper ? 'checking' : model?.status)}
+                    </div>
+                </div>
+
+                ${
+                    isDownloading
+                        ? html`
+                              <div class="whisper-progress-container" aria-live="polite">
+                                  <div class="whisper-progress-header">
+                                      <span>${downloadProgress?.label || 'Downloading components...'}</span>
+                                      <span>
+                                          ${
+                                              downloadProgress?.percentage !== null && downloadProgress?.percentage !== undefined
+                                                  ? `${downloadProgress.percentage}%`
+                                                  : ''
+                                          }
+                                      </span>
+                                  </div>
+                                  <div class="whisper-progress-bar-track">
+                                      <div
+                                          class="whisper-progress-bar-fill ${downloadProgress?.percentage === null ? 'indeterminate' : ''}"
+                                          style="width: ${
+                                              downloadProgress?.percentage !== null && downloadProgress?.percentage !== undefined
+                                                  ? `${downloadProgress.percentage}%`
+                                                  : '40%'
+                                          }"
+                                          role="progressbar"
+                                          aria-valuenow="${downloadProgress?.percentage || 0}"
+                                          aria-valuemin="0"
+                                          aria-valuemax="100"
+                                      ></div>
+                                  </div>
+                                  <div class="whisper-progress-header">
+                                      <span>
+                                          ${
+                                              downloadProgress?.expectedBytes > 0
+                                                  ? `${this._formatBytes(downloadProgress.downloadedBytes)} / ${this._formatBytes(downloadProgress.expectedBytes)}`
+                                                  : downloadProgress?.downloadedBytes > 0
+                                                    ? `${this._formatBytes(downloadProgress.downloadedBytes)} downloaded`
+                                                    : ''
+                                          }
+                                      </span>
+                                      <button class="btn-action-sm" type="button" @click=${() => this._cancelWhisperDownload()}>Cancel</button>
+                                  </div>
+                              </div>
+                          `
+                        : ''
+                }
+                ${this._whisperActionError ? html`<div class="form-hint" style="color: var(--danger);">${this._whisperActionError}</div>` : ''}
+
+                <div class="whisper-buttons-row">
+                    ${
+                        !isDownloading && (needsDownload || needsRepair)
+                            ? html`
+                                  <button
+                                      class="btn-action-sm primary"
+                                      type="button"
+                                      ?disabled=${this.isSessionActive}
+                                      @click=${() => this._downloadWhisper()}
+                                  >
+                                      ${needsRepair ? 'Download again (Repair)' : 'Download missing files'}
+                                  </button>
+                              `
+                            : ''
+                    }
+
+                    <button class="btn-action-sm" type="button" @click=${() => this._openWhisperFolder()}>Open download folder</button>
+
+                    ${
+                        !isDownloading && modelReady && !this._confirmDeleteModel
+                            ? html`
+                                  <button
+                                      class="btn-action-sm danger"
+                                      type="button"
+                                      ?disabled=${this.isSessionActive}
+                                      @click=${() => {
+                                          this._confirmDeleteModel = true;
+                                          this.requestUpdate();
+                                      }}
+                                  >
+                                      Remove model
+                                  </button>
+                              `
+                            : ''
+                    }
+                </div>
+
+                ${
+                    this._confirmDeleteModel
+                        ? html`
+                              <div class="confirm-delete-box" role="alert">
+                                  <span>Remove downloaded file for <strong>${model?.name || this._whisperModel}</strong>?</span>
+                                  <div class="whisper-buttons-row" style="margin-top: 2px;">
+                                      <button class="btn-action-sm danger" type="button" @click=${() => this._handleDeleteWhisperModel()}>
+                                          Confirm Remove
+                                      </button>
+                                      <button
+                                          class="btn-action-sm"
+                                          type="button"
+                                          @click=${() => {
+                                              this._confirmDeleteModel = false;
+                                              this.requestUpdate();
+                                          }}
+                                      >
+                                          Cancel
+                                      </button>
+                                  </div>
+                              </div>
+                          `
+                        : ''
+                }
+            </div>
+        `;
     }
 
     _handleProfileChange(e) {
@@ -1298,6 +1800,37 @@ export class MainView extends LitElement {
                                       <input type="text" .value=${this._geminiHttpModel} @input=${e => this._saveGeminiHttpModel(e.target.value)} />
                                       <div class="form-hint">Examples: gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-pro</div>
                                   </div>
+
+                                  <div class="form-group">
+                                      <label class="form-label">Audio Transcription</label>
+                                      <select
+                                          class="control"
+                                          .value=${this._geminiHttpTranscriptionMode}
+                                          ?disabled=${this.isSessionActive}
+                                          @change=${e => this._saveGeminiHttpTranscriptionMode(e.target.value)}
+                                      >
+                                          <option value="whisper" ?selected=${this._geminiHttpTranscriptionMode === 'whisper'}>
+                                              Local Whisper (whisper.cpp · Offline)
+                                          </option>
+                                          <option value="gemini" ?selected=${this._geminiHttpTranscriptionMode === 'gemini'}>
+                                              Google Gemini Cloud
+                                          </option>
+                                          <option value="none" ?selected=${this._geminiHttpTranscriptionMode === 'none'}>
+                                              No Transcription (Manual Screenshots & Text Only)
+                                          </option>
+                                      </select>
+                                      <div class="form-hint">
+                                          ${
+                                              this._geminiHttpTranscriptionMode === 'whisper'
+                                                  ? 'Audio is transcribed locally with whisper.cpp. Only recognized text is sent to Gemini.'
+                                                  : this._geminiHttpTranscriptionMode === 'none'
+                                                    ? 'Audio listening is disabled. No sound is sent anywhere; ask questions via screenshots or typing.'
+                                                    : 'Audio is buffered and transcribed remotely by Google Gemini.'
+                                          }
+                                      </div>
+                                  </div>
+
+                                  ${this._geminiHttpTranscriptionMode === 'whisper' ? this._renderWhisperSection() : ''}
                               `
                             : html`
                                   <div class="form-group">

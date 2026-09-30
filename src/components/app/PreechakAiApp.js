@@ -646,6 +646,7 @@ export class PreechakAiApp extends LitElement {
             clearInterval(this._timerInterval);
             this._timerInterval = null;
         }
+        this.startTime = null;
     }
 
     getElapsedTime() {
@@ -702,6 +703,7 @@ export class PreechakAiApp extends LitElement {
                 await ipcRenderer.invoke('close-session');
             }
             this.sessionActive = false;
+            this.startTime = null;
             this._stopTimer();
             this.currentView = 'main';
         } else {
@@ -941,6 +943,7 @@ export class PreechakAiApp extends LitElement {
                         .whisperDownloading=${this._whisperDownloading}
                         .downloadProgress=${this._localAiDownloadProgress}
                         .onCancelDownload=${() => this.handleCancelLocalDownload()}
+                        .isSessionActive=${this.sessionActive}
                     ></main-view>
                 `;
 

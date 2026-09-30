@@ -8,15 +8,19 @@ function harness({
     transcribe = async () => ({ text: 'What is a closure?' }),
     summarize = async () => ({ text: 'The interviewer asked about JS fundamentals. The candidate clarified experience with React.' }),
     config = {},
+    preferences = {},
     mockFs = null,
+    mockWhisper = null,
 } = {}) {
     const events = [],
         saved = [],
         savedAnalyses = [],
         requests = [],
-        summarizeRequests = [];
+        summarizeRequests = [],
+        geminiTranscribeRequests = [];
 
     const effectiveFs = mockFs || fs;
+    const prefs = { ...preferences };
 
     const context = {
         Buffer,
@@ -26,6 +30,14 @@ function harness({
             if (name === 'node:fs' || name === 'fs') return effectiveFs;
             if (name === 'node:path' || name === 'path') return path;
             if (name === './llmRequestLogger') return { logLlmRequest: (_, payload) => payload };
+            if (name === './whisper-runtime')
+                return {
+                    startWhisperServer: mockWhisper?.startWhisperServer || (async () => 'http://127.0.0.1:8080'),
+                    stopWhisperServer: mockWhisper?.stopWhisperServer || (() => {}),
+                    transcribeAudio: mockWhisper?.transcribeAudio || (async () => 'Local whisper transcribed question'),
+                    resample24kTo16k: buf => buf,
+                    isWhisperServerRunning: () => true,
+                };
             if (name === '@google/genai')
                 return {
                     GoogleGenAI: class {
@@ -36,6 +48,7 @@ function harness({
                                     summarizeRequests.push(request);
                                     return summarize(request);
                                 }
+                                geminiTranscribeRequests.push(request);
                                 return transcribe(request);
                             },
                             generateContentStream: async request => {
@@ -51,7 +64,7 @@ function harness({
                 return {
                     getApiKey: () => 'test',
                     getConfig: () => ({ httpRecentHistoryTokenBudget: 4000, httpSummaryTargetTokens: 500, ...config }),
-                    getPreferences: () => ({}),
+                    getPreferences: () => prefs,
                 };
             if (name === './prompts') return { getSystemPrompt: () => 'Profile instructions' };
             if (name === './gemini')
@@ -71,11 +84,13 @@ function harness({
     return {
         api: context.module.exports,
         segment: context.handleSpeechSegment,
+        prefs,
         events,
         saved,
         savedAnalyses,
         requests,
         summarizeRequests,
+        geminiTranscribeRequests,
     };
 }
 
@@ -397,21 +412,181 @@ test('typed and spoken questions use identical context handling and speaker labe
     assert.equal(h.saved[1][0], 'Typed follow up question');
 });
 
-test('summarization failure gracefully falls back without crashing or dropping storage', async () => {
-    let questionIndex = 0;
+test('local whisper transcription routes transcript to answer pipeline without gemini transcription', async () => {
+    let whisperTranscribeCalls = 0;
     const h = harness({
-        transcribe: async () => ({ text: `Question ${++questionIndex}` }),
-        summarize: async () => {
-            throw new Error('Summarization rate limit');
+        preferences: { geminiHttpLocalWhisper: true, whisperModel: 'base.en' },
+        mockWhisper: {
+            startWhisperServer: async () => 'http://127.0.0.1:8080',
+            stopWhisperServer: () => {},
+            transcribeAudio: async () => {
+                whisperTranscribeCalls++;
+                return 'Local whisper question text';
+            },
         },
-        config: { httpRecentHistoryTokenBudget: 20 },
     });
+
+    await h.api.initializeGeminiHttpSession('test');
+    assert.equal(h.api.isUsingLocalWhisper(), true);
+
+    await h.segment(audio, 'Interviewer');
+    assert.equal(whisperTranscribeCalls, 1, 'Local whisper transcribeAudio should be invoked');
+    assert.equal(h.geminiTranscribeRequests.length, 0, 'Gemini remote audio transcription must NOT be called');
+
+    // Result should be passed to Gemini answer pipeline
+    assert.equal(h.requests.length, 1, 'Gemini answer pipeline should be invoked with prompt');
+    assert.equal(h.requests[0].contents[0].parts[0].text, '[Interviewer]: Local whisper question text');
+    assert.equal(h.saved.length, 1);
+    assert.equal(h.saved[0][0], '[Interviewer]: Local whisper question text');
+});
+
+test('disabled local whisper preserves standard Gemini audio transcription', async () => {
+    let whisperTranscribeCalls = 0;
+    const h = harness({
+        preferences: { geminiHttpLocalWhisper: false, geminiHttpTranscriptionMode: 'gemini' },
+        mockWhisper: {
+            transcribeAudio: async () => {
+                whisperTranscribeCalls++;
+                return 'Should not be called';
+            },
+        },
+    });
+
+    await h.api.initializeGeminiHttpSession('test');
+    assert.equal(h.api.isUsingLocalWhisper(), false);
+    assert.equal(h.api.getTranscriptionMode(), 'gemini');
+
+    await h.segment(audio, 'Interviewer');
+    assert.equal(whisperTranscribeCalls, 0, 'Local whisper must NOT be called when preference is false');
+    assert.equal(h.geminiTranscribeRequests.length, 1, 'Gemini audio transcription should be called');
+    assert.equal(h.requests.length, 1);
+});
+
+test('transcriptionMode none ignores incoming audio completely without API or Whisper calls', async () => {
+    let whisperTranscribeCalls = 0;
+    const h = harness({
+        preferences: { geminiHttpTranscriptionMode: 'none' },
+        mockWhisper: {
+            transcribeAudio: async () => {
+                whisperTranscribeCalls++;
+                return 'Should not be called';
+            },
+        },
+    });
+
+    await h.api.initializeGeminiHttpSession('test');
+    assert.equal(h.api.isUsingLocalWhisper(), false);
+    assert.equal(h.api.getTranscriptionMode(), 'none');
+
+    await h.segment(audio, 'Interviewer');
+    assert.equal(whisperTranscribeCalls, 0, 'Local whisper must NOT be called in none mode');
+    assert.equal(h.geminiTranscribeRequests.length, 0, 'Gemini audio transcription must NOT be called in none mode');
+    assert.equal(h.requests.length, 0, 'No answer request should be made');
+    assert.equal(h.saved.length, 0, 'No turns should be saved');
+
+    // Screenshot questions still work normally
+    const result = await h.api.handleHttpScreenshot('base64Image', 'Manual question', '/fake/shot.jpg');
+    assert.ok(result.success);
+    assert.equal(h.requests.length, 1);
+});
+
+test('whisper transcription failure emits error status and does not silently upload audio to gemini', async () => {
+    const h = harness({
+        preferences: { geminiHttpLocalWhisper: true },
+        mockWhisper: {
+            startWhisperServer: async () => 'http://127.0.0.1:8080',
+            stopWhisperServer: () => {},
+            transcribeAudio: async () => {
+                throw new Error('Whisper server process crashed');
+            },
+        },
+    });
+
+    await h.api.initializeGeminiHttpSession('test');
+    await h.segment(audio, 'Interviewer');
+
+    // Remote gemini transcription must NEVER be called as a silent fallback
+    assert.equal(h.geminiTranscribeRequests.length, 0, 'Must not silently fall back to Gemini audio upload');
+    assert.equal(h.requests.length, 0, 'Answer pipeline should not be called on failed transcription');
+
+    // Actionable error status should be sent to renderer
+    const errorEvent = h.events.find(e => e[0] === 'update-status' && String(e[1]).includes('Whisper transcription failed'));
+    assert.ok(errorEvent, 'Error status informing user of Whisper failure must be emitted');
+});
+
+test('local whisper handles queued speech and preserves attachments snapshots', async () => {
+    let release;
+    const h = harness({
+        preferences: { geminiHttpLocalWhisper: true },
+        mockWhisper: {
+            startWhisperServer: async () => 'http://127.0.0.1:8080',
+            stopWhisperServer: () => {},
+            transcribeAudio: () =>
+                new Promise(resolve => {
+                    release = resolve;
+                }),
+        },
+    });
+
+    await h.api.initializeGeminiHttpSession('test');
+    await h.api.handleHttpScreenshot('shot1Base64', 'First screen', '/fake/shot1.jpg');
+
+    // Speech started while shot1 is active
+    const speechPromise = h.segment(audio, 'Interviewer');
+
+    // User takes a second screenshot during transcription
+    await h.api.handleHttpScreenshot('shot2Base64', 'Second screen', '/fake/shot2.jpg');
+
+    release('Question while looking at shot1');
+    await speechPromise;
+    await settle();
+
+    assert.equal(h.requests.length, 3);
+    const speechRequest = h.requests[2];
+    const userParts = speechRequest.contents[speechRequest.contents.length - 1].parts;
+    assert.ok(
+        userParts.some(p => p.inlineData && p.inlineData.data === 'shot1Base64'),
+        'Speech request should include snapshot image from start of speech'
+    );
+    assert.ok(!userParts.some(p => p.inlineData && p.inlineData.data === 'shot2Base64'));
+});
+
+test('session close followed by reopen with whisper transcription mode successfully transcribes new audio', async () => {
+    let whisperCalls = 0;
+    const h = harness({
+        preferences: { geminiHttpTranscriptionMode: 'none' },
+        mockWhisper: {
+            startWhisperServer: async () => 'http://127.0.0.1:8080',
+            stopWhisperServer: () => {},
+            transcribeAudio: async () => {
+                whisperCalls++;
+                return 'Reconnected session question';
+            },
+        },
+    });
+
+    // Session 1: initialized in 'none' mode
+    await h.api.initializeGeminiHttpSession('test');
+    await h.segment(audio, 'Interviewer');
+    assert.equal(whisperCalls, 0, 'No whisper calls in none mode');
+    assert.equal(h.requests.length, 0);
+
+    // Close session 1
+    h.api.closeGeminiHttpSession();
+
+    // User switches mode to 'whisper' and starts Session 2
+    h.prefs.geminiHttpTranscriptionMode = 'whisper';
     await h.api.initializeGeminiHttpSession('test');
 
-    for (let i = 0; i < 4; i++) {
-        await h.segment(audio);
-    }
+    // New speech arrives in Session 2
+    await h.segment(audio, 'Interviewer');
+    await settle();
 
-    assert.equal(h.requests.length, 4);
-    assert.equal(h.saved.length, 4);
+    assert.equal(whisperCalls, 1, 'Whisper must be called in session 2 after switching mode to whisper');
+    assert.equal(h.requests.length, 1, 'Gemini answer must be generated from Whisper transcript');
+    const userParts = h.requests[0].contents[h.requests[0].contents.length - 1].parts;
+    assert.ok(
+        userParts.some(p => p.text && p.text.includes('Reconnected session question')),
+        'Transcript must be included in conversation prompt'
+    );
 });
