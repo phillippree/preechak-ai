@@ -4,7 +4,18 @@
 
 ![Preechak AI meeting screen](documents/images/meeting_screen.png)
 
-Preechak AI is an Electron desktop assistant that uses screen captures and audio to provide contextual AI responses. It supports cloud sessions powered by Google Gemini (Live WebSocket & HTTP REST) with optional local speech transcription via whisper.cpp.
+## Your meeting, captured in context
+
+Stay focused on the conversation while the app helps you take meeting notes. It records system audio and your microphone, captures presentations on your screen, and brings spoken and visual context together with Gemini.
+
+From a conversation to a slide walkthrough, capture what’s said and what’s shown—then ask questions to better understand the discussion.
+
+- **Capture both sides of the conversation.** Record audio from your computer and microphone.
+- **Keep the presentation in view.** Capture on-screen slides and other visual material alongside the discussion.
+- **Get clearer transcripts.** Use the optional Gemini Flash transcription engine to help improve speech recognition accuracy.
+- **Ask questions with context.** Send your questions and captured screen content to Gemini for answers informed by what’s being presented.
+
+Less time juggling notes. More attention for the meeting.
 
 ## Features
 
