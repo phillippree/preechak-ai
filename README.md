@@ -4,7 +4,7 @@
 
 ![Preechak AI meeting screen](documents/images/meeting_screen.png)
 
-Preechak AI is an Electron desktop assistant that uses screen captures and audio to provide contextual AI responses. It supports API-based sessions with Gemini and Groq, plus local inference with llama.cpp and whisper.cpp.
+Preechak AI is an Electron desktop assistant that uses screen captures and audio to provide contextual AI responses. It supports cloud sessions powered by Google Gemini (Live WebSocket & HTTP REST) with optional local speech transcription via whisper.cpp.
 
 ## Features
 
@@ -33,32 +33,29 @@ The SSH clone requires a GitHub key with access to this repository. You can also
 
 Grant screen recording and microphone permissions when requested. On macOS, check **System Settings → Privacy & Security** if capture fails, then restart the app after changing permissions.
 
-## Choose an AI mode
+## Getting Started with Gemini
 
-### Use your own API keys
+### Connect with your Gemini API Key
 
 On the home screen:
 
 1. Under **Gemini API & Connection**, enter your Gemini API key and choose your **Connection Mode**:
     - **Live Streaming (WebSocket)**: Connects to Gemini Live (`gemini-3.1-flash-live-preview`) for bidirectional real-time audio.
     - **Buffered Requests (HTTP)**: Buffers audio segments on speech pauses and sends requests via HTTP REST (`gemini-3.8-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, etc.).
-2. Under **AI responses**, optionally enter a Groq API key and configure the response and image models.
-3. Choose your profile, audio input, language, and prompts in the app's settings and AI customization views.
-4. Click **Start Session**.
-
-With a Groq key, the app can use Groq for responses; without one, Gemini is used directly for answers. Image questions require a model that supports images.
+2. Choose your profile, audio input, language, and prompts in the app's settings and AI customization views.
+3. Click **Start Session**.
 
 ### Audio transcription
 
 Under **Gemini API & Connection → Buffered Requests (HTTP) → Audio Transcription**, choose how speech becomes text:
 
-| Selection | Transcription path | Answer generation |
-| --- | --- | --- |
-| **Local Whisper** | Audio is transcribed on your computer by whisper.cpp | Recognized text is sent to Gemini HTTP, or Groq when configured |
-| **Google Gemini Cloud** | Buffered audio is sent to Gemini for transcription | The transcript is used in a separate answer request |
-| **No Transcription** | Audio is ignored by the HTTP transcription pipeline | Typed questions and manual screenshots remain available |
+| Selection               | Transcription path                                     | Answer generation                             |
+| ----------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| **Local Whisper**       | Audio is transcribed on your computer by whisper.cpp   | Recognized text is sent to Gemini for answers |
+| **Google Gemini Cloud** | Buffered audio is transcribed in-memory by Gemini HTTP | The transcript is used in an answer request   |
+| **No Transcription**    | Audio is ignored by the HTTP transcription pipeline    | Typed questions and screenshots remain active |
 
-The current HTTP transcription preference defaults to **Local Whisper** with **Base English**; saved settings override defaults. The overall connection default remains Gemini Live/WebSocket, which uses Gemini Live transcription and does not use this HTTP selector. Transcription settings cannot be changed during an active session.
+The current HTTP transcription preference defaults to **Local Whisper** with **Base English**; saved settings override defaults. In Google Gemini Cloud transcription mode, audio segments are transcribed directly in-memory via the configured Gemini HTTP model for lowest round-trip latency. The overall connection default remains Gemini Live/WebSocket, which uses Gemini Live transcription and does not use this HTTP selector. Transcription settings cannot be changed during an active session.
 
 ```mermaid
 flowchart TD
@@ -70,11 +67,11 @@ flowchart TD
     E --> G["Show recognized words"]
     F --> G
     G --> H["Transcript + conversation context<br/>+ selected screenshot attachments"]
-    H --> I["Remote answer provider"]
+    H --> I["Remote answer provider (Gemini)"]
     I --> J["Stream answer and save history"]
 ```
 
-The diagram shows the audio-enabled HTTP paths. With **No Transcription**, use text or screenshots directly. In Local Whisper mode, audio stays on your computer for recognition, but the transcript and any selected images still go to the remote answer provider. This starts only Whisper, not llama.cpp.
+The diagram shows the audio-enabled HTTP paths. With **No Transcription**, use text or screenshots directly. In Local Whisper mode, audio stays on your computer for recognition, but the transcript and any selected images still go to Gemini for answering.
 
 #### Whisper engine and models
 
@@ -88,7 +85,7 @@ The diagram shows the audio-enabled HTTP paths. With **No Transcription**, use t
 
 **Troubleshooting:** an engine shown as installed can still fail to launch because the current installation check primarily detects its executable. A macOS error such as `Library not loaded: @rpath/libwhisper.1.dylib` indicates a missing engine dependency, not a corrupt speech model. The build code includes static-library flags and auxiliary-library handling, but an older broken executable may still require repair.
 
-See [Transcription details and diagrams](documents/transcription.md) for the complete routing, installation, queue, storage, and troubleshooting explanation. Full **Local AI** mode uses a separate combined Whisper + llama.cpp startup path, described below.
+See [Transcription details and diagrams](documents/transcription.md) for the complete routing, installation, queue, storage, and troubleshooting explanation.
 
 ### Gemini HTTP context management, shared screenshots, and token budgeting
 
@@ -124,25 +121,25 @@ Model and context configuration defaults:
 | Gemini HTTP Model     | `gemini-3.8-flash`              | HTTP REST model for transcription, answers, and images   |
 | Recent History Budget | `4000` tokens                   | Maximum token allocation for recent conversational turns |
 | Summary Target        | `500` tokens                    | Target token length for the running background summary   |
-| Groq response model   | `qwen/qwen3.6-27b`              | Optional Groq answer generation model                    |
-| Groq image model      | `qwen/qwen3.6-27b`              | Optional Groq screenshot analysis model                  |
 
-These are configuration defaults, not a guarantee of provider availability or image support. Use model IDs supported by your provider account.
+## Roadmap & Planned Features (TODO)
 
-### Use local AI
+The following capabilities are planned or in development and not part of the active release:
 
-Select **Use local AI** on the home screen, choose a language model and Whisper model, then click **Start Session**.
+### 1. Groq AI Integration
 
-- Language inference runs through **llama.cpp**; transcription runs through **whisper.cpp**. Ollama is not required.
-- The default language model is `unsloth/Qwen3.5-4B-GGUF:Q4_K_M`.
-- You can select a preset, enter a Hugging Face model reference, or provide an absolute path to a local GGUF file.
-- Whisper options are `tiny.en`, `base.en`, and `small.en`; these are English models.
-- First use downloads the native runners and required models. Allow sufficient disk space and memory for your selected model.
-- Local inference runs on your computer; initial downloads require internet access.
+- **What is Groq?** [Groq](https://groq.com) is an ultra-fast AI inference platform powered by custom LPU (Language Processing Unit) silicon, engineered to serve open-weight language and vision models (such as Qwen and Llama) with high token throughput and low latency.
+- **Planned Capabilities**:
+    - Optional Groq API key configuration in settings.
+    - Configurable text response models (e.g., `qwen/qwen3.6-27b`) and vision models.
+    - Optional reasoning controls (e.g., disable internal thinking for faster streaming).
 
-The runtime downloader currently defines builds for **macOS Apple Silicon**, **macOS Intel**, and **Windows x64**. It does not define a Linux local-AI build.
+### 2. Full Offline Local AI (llama.cpp)
 
-**Current download dependency:** native runners are fetched from `preechak-ai/preechak-ai` release `v0.7.0`, as configured in `src/utils/native-ai-runtime.js`. Those assets must be available for automatic setup to succeed; they are not fetched from this fork's GitHub repository.
+- **Planned Capabilities**:
+    - Run offline language model inference entirely on-device using **llama.cpp** alongside local **whisper.cpp** audio transcription, without requiring external API keys.
+    - Support for GGUF model presets (e.g., `unsloth/Qwen3.5-4B-GGUF:Q4_K_M`), custom Hugging Face model references, and local file selection.
+    - Automated native runner installation and model downloads across macOS (Apple Silicon / Intel) and Windows x64.
 
 ## Default hotkeys
 

@@ -1844,58 +1844,7 @@ export class MainView extends LitElement {
                 </div>
             </details>
 
-            <details class="config-section">
-                <summary class="config-summary">
-                    <span class="config-summary-text">
-                        <span class="config-summary-title">AI responses</span>
-                        <span class="config-summary-description">Groq key and response model</span>
-                    </span>
-                    ${this._renderConfigChevron()}
-                </summary>
-                <div class="config-content">
-                    <div class="form-group">
-                        <label class="form-label">Groq API Key</label>
-                        <input type="password" placeholder="Optional" .value=${this._groqKey} @input=${e => this._saveGroqKey(e.target.value)} />
-                        <div class="form-hint">
-                            <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq key</span>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Groq Model</label>
-                        <input type="text" .value=${this._groqModel} @input=${e => this._saveGroqModel(e.target.value)} />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Groq Image Model</label>
-                        <input type="text" .value=${this._groqImageModel} @input=${e => this._saveGroqImageModel(e.target.value)} />
-                    </div>
-
-                    <label class="config-checkbox">
-                        <input
-                            type="checkbox"
-                            .checked=${this._disableGroqThinking}
-                            @change=${e => this._saveDisableGroqThinking(e.target.checked)}
-                        />
-                        <span class="config-checkbox-text">
-                            <span class="config-summary-title">Disable thinking</span>
-                            <span class="config-summary-description">Faster responses with less internal reasoning</span>
-                        </span>
-                    </label>
-
-                    <div class="config-note">
-                        If the Groq API key is empty, Gemini Live is used for answers instead. Its answer quality may be lower.
-                    </div>
-                </div>
-            </details>
-
-            ${this._renderStartButton()} ${this._renderDivider()}
-
-            <!-- Cloud promo intentionally removed from the active UI. -->
-
-            <div class="mode-links">
-                <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
-            </div>
+            ${this._renderStartButton()}
         `;
     }
 
@@ -1995,9 +1944,9 @@ export class MainView extends LitElement {
                                   <button class="help-btn" @click=${this._openLocalHelp} aria-label="Open Local AI help">${helpIcon}</button>
                               </div>
                           `
-                        : html` <div class="page-title">${html`Preechak AI <span class="mode-suffix">BYOK</span>`}</div> `
+                        : html` <div class="page-title">Preechak AI</div> `
                 }
-                <div class="page-subtitle">${this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}</div>
+                ${this._mode === 'local' ? html`<div class="page-subtitle">Run models locally on your machine</div>` : ''}
 
                 <!-- Cloud mode render branch intentionally disabled. -->
                 ${this._mode === 'byok' ? this._renderByokMode() : ''} ${this._mode === 'local' ? this._renderLocalMode() : ''}
