@@ -4,6 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+if (!globalThis.window) {
+    globalThis.window = globalThis;
+}
+
 // Initialize marked and hljs in global scope for testing environment
 if (!globalThis.marked || !globalThis.hljs) {
     const markedPath = path.join(__dirname, '../src/assets/marked-4.3.0.min.js');
@@ -188,4 +192,15 @@ def stream_function():
     assert.ok(html.includes('class="code-block-wrapper"'));
     assert.ok(html.includes('stream_function'));
     assert.ok(html.includes('hljs-keyword'));
+});
+
+test('markdownStyles configures word wrapping and prevents horizontal overflow for code blocks', () => {
+    const stylesPath = path.join(__dirname, '../src/components/views/markdownStyles.js');
+    const cssContent = fs.readFileSync(stylesPath, 'utf8');
+
+    assert.ok(cssContent.includes('white-space: pre-wrap;'), 'Code block should have pre-wrap');
+    assert.ok(cssContent.includes('word-break: break-word;'), 'Code block should have word-break');
+    assert.ok(cssContent.includes('overflow-wrap: anywhere;'), 'Code block should have overflow-wrap: anywhere');
+    assert.ok(cssContent.includes('overflow-x: hidden;'), 'Code block pre should have overflow-x: hidden');
+    assert.ok(cssContent.includes('background: var(--bg-elevated'), 'Code block wrapper should use dynamic bg-elevated variable');
 });

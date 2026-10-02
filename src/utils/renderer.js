@@ -852,8 +852,47 @@ async function captureManualScreenshot(imageQuality = null) {
     );
 }
 
+async function captureSnipArea() {
+    console.log('Snip area capture triggered');
+    try {
+        const snipResult = await ipcRenderer.invoke('start-snip-capture');
+        if (snipResult && snipResult.success && snipResult.data) {
+            let screenshotPrompt = MANUAL_SCREENSHOT_PROMPT;
+            try {
+                const prefs = await storage.getPreferences();
+                const currentProfile = prefs.selectedProfile || 'interview';
+                if (prefs && prefs.screenshotPrompts && prefs.screenshotPrompts[currentProfile]) {
+                    screenshotPrompt = prefs.screenshotPrompts[currentProfile];
+                } else if (prefs && prefs.manualScreenshotPrompt) {
+                    screenshotPrompt = prefs.manualScreenshotPrompt;
+                }
+            } catch (prefErr) {
+                console.warn('Could not load screenshot prompt preference, using default:', prefErr);
+            }
+
+            const result = await ipcRenderer.invoke('send-image-content', {
+                data: snipResult.data,
+                prompt: screenshotPrompt,
+            });
+
+            if (result.success) {
+                console.log(`Snip area response completed from ${result.model}`);
+            } else {
+                console.error('Failed to get snip response:', result.error);
+                preechakAi.addNewResponse(`Error: ${result.error}`);
+            }
+            return result;
+        } else if (snipResult && snipResult.cancelled) {
+            console.log('Snip area selection cancelled by user');
+        }
+    } catch (err) {
+        console.error('Error during snip capture:', err);
+    }
+}
+
 // Expose functions to global scope for external access
 window.captureManualScreenshot = captureManualScreenshot;
+window.captureSnipArea = captureSnipArea;
 
 function stopCapture() {
     currentDisplayId = null;
@@ -995,6 +1034,8 @@ function handleShortcut(shortcutKey) {
         } else {
             captureManualScreenshot();
         }
+    } else if (shortcutKey === 'ctrl+shift+s' || shortcutKey === 'cmd+shift+s') {
+        captureSnipArea();
     }
 }
 
@@ -1304,6 +1345,7 @@ const preechakAi = {
     cancelLocalInitialization,
     startCapture,
     stopCapture,
+    captureSnipArea,
     sendTextMessage,
     handleShortcut,
 

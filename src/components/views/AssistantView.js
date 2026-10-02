@@ -442,13 +442,19 @@ export class AssistantView extends LitElement {
                 border: 1px solid var(--border);
                 border-radius: var(--radius-md);
                 padding: var(--space-sm) var(--space-md);
-                overflow-x: auto;
+                overflow-x: hidden;
+                white-space: pre-wrap;
+                word-break: break-word;
+                overflow-wrap: anywhere;
                 margin: 0.6em 0;
             }
 
             .bubble-ai-content pre code {
                 background: none;
                 padding: 0;
+                white-space: pre-wrap;
+                word-break: break-word;
+                overflow-wrap: anywhere;
             }
 
             .bubble-ai-content a {
@@ -699,6 +705,37 @@ export class AssistantView extends LitElement {
                 inset: -1px;
                 width: calc(100% + 2px);
                 height: calc(100% + 2px);
+                pointer-events: none;
+            }
+
+            .snip-btn {
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
+                color: var(--text-primary);
+                cursor: pointer;
+                font-size: var(--font-size-xs);
+                font-family: var(--font-mono);
+                white-space: nowrap;
+                padding: var(--space-xs) 10px;
+                border-radius: 100px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                transition:
+                    border-color 0.2s ease,
+                    background var(--transition);
+                flex-shrink: 0;
+            }
+
+            .snip-btn:hover:not(.disabled) {
+                border-color: var(--accent);
+                background: var(--bg-surface);
+            }
+
+            .snip-btn.disabled {
+                opacity: 0.5;
+                cursor: default;
                 pointer-events: none;
             }
 
@@ -1221,6 +1258,18 @@ export class AssistantView extends LitElement {
         }
     }
 
+    async handleSnipAnswer() {
+        if (this.isAnalyzing) return;
+        if (window.captureSnipArea) {
+            this.isAnalyzing = true;
+            this._responseCountWhenStarted = this.responses.length;
+            const res = await window.captureSnipArea();
+            if (!res || res.cancelled) {
+                this.isAnalyzing = false;
+            }
+        }
+    }
+
     _startWaveformAnimation() {
         const canvas = this.shadowRoot.querySelector('.analyze-canvas');
         if (!canvas) return;
@@ -1702,6 +1751,26 @@ export class AssistantView extends LitElement {
                 <div class="input-bar-inner">
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
                 </div>
+                <button
+                    class="snip-btn ${this.isAnalyzing ? 'disabled' : ''}"
+                    @click=${this.handleSnipAnswer}
+                    title="Snip Area (Drag mouse to highlight)"
+                >
+                    <svg
+                        width="13"
+                        height="13"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+                        <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+                    </svg>
+                    Snip
+                </button>
                 <button class="analyze-btn ${this.isAnalyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>
                     <canvas class="analyze-canvas"></canvas>
                     <span class="analyze-btn-content">

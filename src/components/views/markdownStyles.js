@@ -153,8 +153,8 @@ export const markdownStyles = css`
     .code-block-wrapper {
         margin: 0.9em 0;
         border-radius: var(--radius-md, 8px);
-        background: #0d1117;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: var(--bg-elevated, rgba(13, 17, 23, 0.85));
+        border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
         overflow: hidden;
         display: flex;
@@ -169,7 +169,7 @@ export const markdownStyles = css`
         justify-content: space-between;
         padding: 5px 12px;
         background: rgba(255, 255, 255, 0.04);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
         user-select: none;
     }
 
@@ -231,7 +231,7 @@ export const markdownStyles = css`
         margin: 0;
         padding: 12px 14px;
         background: transparent;
-        overflow-x: auto;
+        overflow-x: hidden;
         max-width: 100%;
         box-sizing: border-box;
     }
@@ -243,11 +243,12 @@ export const markdownStyles = css`
         font-family: var(--font-mono);
         font-size: 12.5px;
         line-height: 1.55;
-        white-space: pre;
+        white-space: pre-wrap;
         tab-size: 4;
         -moz-tab-size: 4;
-        word-break: normal;
-        word-wrap: normal;
+        word-break: break-word;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
         color: #c9d1d9;
     }
 

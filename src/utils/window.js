@@ -1,6 +1,7 @@
 const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const storage = require('../storage');
+const { startSnipCapture } = require('./snipOverlay');
 
 let mouseEventsIgnored = false;
 let stealthModeEnabled = true;
@@ -142,6 +143,7 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         toggleStealthMode: isMac ? 'Cmd+Shift+H' : 'Ctrl+Shift+H',
+        snipArea: isMac ? 'Cmd+Shift+S' : 'Ctrl+Shift+S',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
@@ -247,6 +249,27 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             console.log(`Registered toggleStealthMode: ${keybinds.toggleStealthMode}`);
         } catch (error) {
             console.error(`Failed to register toggleStealthMode (${keybinds.toggleStealthMode}):`, error);
+        }
+    }
+
+    // Register snip area shortcut
+    if (keybinds.snipArea) {
+        try {
+            globalShortcut.register(keybinds.snipArea, async () => {
+                console.log('Snip area shortcut triggered');
+                try {
+                    const isMac = process.platform === 'darwin';
+                    const shortcutKey = isMac ? 'cmd+shift+s' : 'ctrl+shift+s';
+                    mainWindow.webContents.executeJavaScript(`
+                        preechakAi.handleShortcut('${shortcutKey}');
+                    `);
+                } catch (error) {
+                    console.error('Error handling snip area shortcut:', error);
+                }
+            });
+            console.log(`Registered snipArea: ${keybinds.snipArea}`);
+        } catch (error) {
+            console.error(`Failed to register snipArea (${keybinds.snipArea}):`, error);
         }
     }
 
@@ -516,6 +539,18 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 mainWindow.setOpacity(1);
             }
             console.error('Error capturing clean screenshot:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('start-snip-capture', async () => {
+        try {
+            if (!mainWindow || mainWindow.isDestroyed()) {
+                return { success: false, error: 'Main window unavailable' };
+            }
+            return await startSnipCapture(mainWindow, stealthModeEnabled);
+        } catch (error) {
+            console.error('Error in start-snip-capture handler:', error);
             return { success: false, error: error.message };
         }
     });
