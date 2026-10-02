@@ -137,15 +137,7 @@ Model and context configuration defaults:
 
 The following capabilities are planned or in development and not part of the active release:
 
-### 1. Groq AI Integration
-
-- **What is Groq?** [Groq](https://groq.com) is an ultra-fast AI inference platform powered by custom LPU (Language Processing Unit) silicon, engineered to serve open-weight language and vision models (such as Qwen and Llama) with high token throughput and low latency.
-- **Planned Capabilities**:
-    - Optional Groq API key configuration in settings.
-    - Configurable text response models (e.g., `qwen/qwen3.6-27b`) and vision models.
-    - Optional reasoning controls (e.g., disable internal thinking for faster streaming).
-
-### 2. Full Offline Local AI (llama.cpp)
+### 1. Full Offline Local AI (llama.cpp)
 
 - **Planned Capabilities**:
     - Run offline language model inference entirely on-device using **llama.cpp** alongside local **whisper.cpp** audio transcription, without requiring external API keys.
@@ -200,7 +192,7 @@ Paths in this section are relative to the project folder, shown generically as `
 | `src/components/views/`                  | Home, assistant, history, settings, onboarding, and AI customization screens          |
 | `src/utils/window.js`                    | Window behavior, global hotkeys, capture protection, and screenshot handlers          |
 | `src/utils/renderer.js`                  | Screen/microphone capture, UI-to-background messages, and storage requests            |
-| `src/utils/gemini.js`                    | Gemini Live, Groq requests, provider routing, macOS audio capture, and session events |
+| `src/utils/gemini.js`                    | Gemini Live, provider routing, macOS audio capture, and session events                |
 | `src/utils/gemini-http.js`               | Buffered audio requests through the Gemini HTTP API                                   |
 | `src/utils/localai.js`                   | Local speech detection, Whisper transcription, and llama.cpp requests                 |
 | `src/utils/native-ai-runtime.js`         | Downloads and manages local AI runners and model files                                |
@@ -229,7 +221,7 @@ The app stores its own persistent data outside the project folder. In the tables
 | Path relative to `<config-dir>`                       | Contents / use                                                                               |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `config.json`                                         | Configuration version, onboarding state, model choices, and connection settings              |
-| `credentials.json`                                    | Gemini and Groq API keys, stored as plain JSON                                               |
+| `credentials.json`                                    | Gemini API keys, stored as plain JSON                                                        |
 | `preferences.json`                                    | AI mode, profiles, prompts, audio settings, language, appearance, and local-model selections |
 | `keybinds.json`                                       | Saved custom keyboard shortcuts                                                              |
 | `limits.json`                                         | Locally recorded provider usage counters                                                     |
@@ -263,7 +255,7 @@ This debug folder is separate from `<config-dir>` and is not removed by resettin
 
 ## Outgoing LLM request logs
 
-When running `npm start`, the terminal prints `[LLM REQUEST]` entries before Gemini, Groq, and local llama.cpp requests. These include the model, system instructions, prompt, conversation context, and generation settings present in the request. Gemini Live connection setup and text inputs are also logged.
+When running `npm start`, the terminal prints `[LLM REQUEST]` entries before Gemini and local llama.cpp requests. These include the model, system instructions, prompt, conversation context, and generation settings present in the request. Gemini Live connection setup and text inputs are also logged.
 
 Audio and image payloads are summarized rather than printed as Base64. Credential fields and recognized API-key patterns are redacted. Prompt and conversation text remain visible, so treat console output as private. These console entries do not add a new log file; the existing transport logs are separate.
 
