@@ -25,10 +25,11 @@ app.whenReady().then(async () => {
         desktopCapturer.getSources({ types: ['screen'] }).catch(() => {});
     }
 
-    createMainWindow();
+    // Setup IPC handlers before creating the window so initial renderer requests never race
     setupGeminiIpcHandlers(geminiSessionRef);
     setupStorageIpcHandlers();
     setupGeneralIpcHandlers();
+    createMainWindow();
 });
 
 app.on('window-all-closed', () => {

@@ -133,6 +133,54 @@ Model and context configuration defaults:
 | Recent History Budget | `4000` tokens                   | Maximum token allocation for recent conversational turns |
 | Summary Target        | `500` tokens                    | Target token length for the running background summary   |
 
+## Modular Architecture & Pipeline
+
+![Modular Architecture](documents/images/modular-architecture.png)
+
+Preechak AI is built on a **Composable Pipeline Architecture** powered by reusable building blocks. Rather than tightly coupling audio capture, prompt engineering, and transport dispatch logic to individual session presets, the system registers modular blocks in a central registry and composes them into profile recipes on demand.
+
+### Key Architectural Layers
+
+1. **Block Registry (`src/services/blockRegistry.js`)**:
+    - **Audio Capture Blocks**: Modular audio strategies including dual-stream (mic + system loopback), mic-only, system-only, and VAD-based chunking.
+    - **Prompt & Persona Blocks**: Domain-specific system instructions, prompt templates, and interview/meeting guidance.
+    - **Transport & Dispatch Blocks**: Pluggable backends supporting real-time Gemini Live WebSockets, buffered Gemini HTTP REST, and local offline models.
+2. **Profile Orchestrator (`src/services/profileOrchestrator.js`)**:
+    - Resolves profile configurations (Job Interview, Business Meeting, Pair Programming, Sales, etc.) into composite pipelines.
+    - Enables dynamic mode switching and parameter updates without tearing down underlying hardware capture streams.
+3. **Session Manager (`src/services/sessionManager.js`)**:
+    - Manages the runtime session lifecycle (`idle` → `starting` → `active` → `stopped`).
+    - Exposes a unified interface for Lit and Electron renderer components.
+
+```mermaid
+flowchart LR
+    subgraph Profiles ["Profile Presets"]
+        ProfInterview["💼 Job Interview"]
+        ProfMeeting["👥 Business Meeting"]
+        ProfCoding["💻 Pair Programming"]
+    end
+
+    subgraph Blocks ["Shared Reusable Blocks"]
+        Dual["DualStreamCaptureBlock"]
+        MicOnly["MicOnlyCaptureBlock"]
+        VAD["VADChunkingBlock"]
+
+        PInterview["InterviewPromptBlock"]
+        PMeeting["MeetingPromptBlock"]
+        PCoding["CodingPromptBlock"]
+
+        LiveWS["GeminiLiveWebSocketBlock"]
+        HttpREST["GeminiBufferedHttpBlock"]
+    end
+
+    %% Mappings
+    ProfInterview --> Dual & PInterview & LiveWS
+    ProfMeeting --> Dual & VAD & PMeeting & HttpREST
+    ProfCoding --> MicOnly & PCoding & HttpREST
+```
+
+For complete technical specifications, source maps, and class diagrams, see [Modular Pipeline Architecture Documentation](documents/modular-pipeline.md) and [System Architecture](documents/architecture.md).
+
 ## Roadmap & Planned Features (TODO)
 
 The following capabilities are planned or in development and not part of the active release:

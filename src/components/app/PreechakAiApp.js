@@ -697,6 +697,9 @@ export class PreechakAiApp extends LitElement {
 
     async handleClose() {
         if (this.currentView === 'assistant') {
+            if (window.preechakAi && window.preechakAi.sessionManager) {
+                await window.preechakAi.sessionManager.stop();
+            }
             preechakAi.stopCapture();
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
@@ -827,6 +830,15 @@ export class PreechakAiApp extends LitElement {
             await preechakAi.initializeGemini(this.selectedProfile, this.selectedLanguage);
         }
 
+        if (window.preechakAi && window.preechakAi.sessionManager) {
+            await window.preechakAi.sessionManager.start({
+                profile: this.selectedProfile,
+                language: this.selectedLanguage,
+                screenshotInterval: this.selectedScreenshotInterval,
+                imageQuality: this.selectedImageQuality,
+            });
+        }
+
         preechakAi.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
         this.currentResponseIndex = -1;
@@ -859,6 +871,9 @@ export class PreechakAiApp extends LitElement {
     async handleProfileChange(profile) {
         this.selectedProfile = profile;
         await preechakAi.storage.updatePreference('selectedProfile', profile);
+        if (window.preechakAi && window.preechakAi.sessionManager) {
+            window.preechakAi.sessionManager.switchProfile(profile);
+        }
     }
 
     async handleLanguageChange(language) {

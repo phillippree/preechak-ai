@@ -1008,8 +1008,8 @@ export class MainView extends LitElement {
     async _loadFromStorage() {
         try {
             const [config, prefs, creds] = await Promise.all([
-                preechakAi.storage.getConfig(),
-                preechakAi.storage.getPreferences(),
+                preechakAi.storage.getConfig().catch(() => ({})),
+                preechakAi.storage.getPreferences().catch(() => ({})),
                 preechakAi.storage.getCredentials().catch(() => ({})),
             ]);
 
@@ -1022,8 +1022,8 @@ export class MainView extends LitElement {
 
             // Load keys
             this._token = creds.cloudToken || '';
-            this._geminiKey = (await preechakAi.storage.getApiKey().catch(() => '')) || '';
-            this._groqKey = (await preechakAi.storage.getGroqApiKey().catch(() => '')) || '';
+            this._geminiKey = creds.apiKey || '';
+            this._groqKey = creds.groqApiKey || '';
             this._openaiKey = creds.openaiKey || '';
             this._apiTransportMode = config.apiTransportMode || 'websocket';
             this._geminiLiveModel = config.geminiLiveModel || 'gemini-3.1-flash-live-preview';
@@ -1040,6 +1040,11 @@ export class MainView extends LitElement {
             this._geminiHttpLocalWhisper = this._geminiHttpTranscriptionMode === 'whisper';
 
             this.requestUpdate();
+            await this.updateComplete;
+            const keyInput = this.shadowRoot?.querySelector('input[type="password"]');
+            if (keyInput && this._geminiKey) {
+                keyInput.value = this._geminiKey;
+            }
 
             if (this._geminiHttpLocalWhisper || this._mode === 'local') {
                 this._checkWhisperStatus();
@@ -1049,8 +1054,13 @@ export class MainView extends LitElement {
         }
     }
 
+    firstUpdated() {
+        this._loadFromStorage();
+    }
+
     connectedCallback() {
         super.connectedCallback();
+        this._loadFromStorage();
         document.addEventListener('keydown', this.boundKeydownHandler);
 
         if (typeof preechakAi !== 'undefined' && preechakAi.whisper) {
@@ -1078,6 +1088,12 @@ export class MainView extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
+        if (changedProperties.has('_geminiKey')) {
+            const keyInput = this.shadowRoot?.querySelector('input[type="password"]');
+            if (keyInput && keyInput.value !== this._geminiKey) {
+                keyInput.value = this._geminiKey;
+            }
+        }
         if (changedProperties.has('_mode')) {
             // Stop old animation when switching modes
             if (this._animId) {
@@ -1580,11 +1596,18 @@ export class MainView extends LitElement {
 
     // ── Start ──
 
-    _handleStart() {
+    async _handleStart() {
         if (this.isInitializing || this.downloadProgress.active) return;
 
         if (this._mode === 'byok') {
-            if (!this._geminiKey.trim()) {
+            let key = this._geminiKey.trim();
+            if (!key && typeof preechakAi !== 'undefined' && preechakAi.storage) {
+                key = ((await preechakAi.storage.getApiKey().catch(() => '')) || '').trim();
+                if (key) {
+                    this._geminiKey = key;
+                }
+            }
+            if (!key) {
                 this._keyError = true;
                 this.requestUpdate();
                 return;
@@ -1769,7 +1792,8 @@ export class MainView extends LitElement {
                         <input
                             type="password"
                             placeholder="Required"
-                            .value=${this._geminiKey}
+                            value="${this._geminiKey || ''}"
+                            .value="${this._geminiKey || ''}"
                             @input=${e => this._saveGeminiKey(e.target.value)}
                             class=${this._keyError ? 'error' : ''}
                         />

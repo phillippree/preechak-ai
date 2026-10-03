@@ -26,6 +26,12 @@ flowchart TD
     Storage <-->|"Read saved sessions through IPC"| History["HistoryView.js"]
 ```
 
+## Modular Pipeline & Profile Architecture
+
+For details on the composable block pipeline, reusable audio/prompt/transport strategies, and the mode switch entrypoint, see [documents/modular-pipeline.md](modular-pipeline.md).
+
+![Modular Architecture](images/modular-architecture.png)
+
 IPC is Electron's messaging system: the visible interface asks the background process to perform actions and receives results. The diagram summarizes logical connections; history reads and writes pass through the renderer's storage wrapper and the handlers in `index.js`.
 
 ## How a question becomes an answer

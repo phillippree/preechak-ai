@@ -41,6 +41,14 @@ export class AssistantView extends LitElement {
                 gap: 6px;
             }
 
+            .bubble-user.typing-bubble.you {
+                border-radius: 18px 18px 18px 4px !important;
+            }
+
+            .bubble-user.typing-bubble.interviewer {
+                border-radius: 18px 18px 4px 18px !important;
+            }
+
             .typing-bubble-inner {
                 display: inline-flex;
                 align-items: center;
@@ -57,6 +65,14 @@ export class AssistantView extends LitElement {
                 align-items: center;
                 width: fit-content;
                 max-width: 80%;
+            }
+
+            .bubble-ai.live-ai-bubble.you {
+                border-radius: 18px 18px 18px 4px !important;
+            }
+
+            .bubble-ai.live-ai-bubble.interviewer {
+                border-radius: 18px 18px 4px 18px !important;
             }
 
             .typing-dots-wrap {
@@ -265,7 +281,15 @@ export class AssistantView extends LitElement {
                 justify-content: flex-start;
             }
 
-            /* ── User Bubble (Right) ── */
+            .chat-row.you {
+                justify-content: flex-start !important;
+            }
+
+            .chat-row.interviewer {
+                justify-content: flex-end !important;
+            }
+
+            /* ── User Bubble (Left for You, Right for Interviewer) ── */
 
             .bubble-user-wrap {
                 display: flex;
@@ -273,6 +297,14 @@ export class AssistantView extends LitElement {
                 align-items: flex-end;
                 max-width: 80%;
                 gap: 4px;
+            }
+
+            .bubble-user-wrap.you {
+                align-items: flex-start !important;
+            }
+
+            .bubble-user-wrap.interviewer {
+                align-items: flex-end !important;
             }
 
             .bubble-user {
@@ -288,6 +320,14 @@ export class AssistantView extends LitElement {
                 box-sizing: border-box;
             }
 
+            .bubble-user.you {
+                border-radius: 18px 18px 18px 4px !important;
+            }
+
+            .bubble-user.interviewer {
+                border-radius: 18px 18px 4px 18px !important;
+            }
+
             .bubble-user-content {
                 font-size: var(--response-font-size, 14px);
                 line-height: 1.45;
@@ -300,6 +340,16 @@ export class AssistantView extends LitElement {
                 font-size: 11px;
                 color: var(--text-muted);
                 padding-right: 4px;
+            }
+
+            .bubble-user-meta.you {
+                padding-left: 4px !important;
+                padding-right: 0 !important;
+            }
+
+            .bubble-user-meta.interviewer {
+                padding-right: 4px !important;
+                padding-left: 0 !important;
             }
 
             .speaker-turn-block {
@@ -337,7 +387,7 @@ export class AssistantView extends LitElement {
                 line-height: 1.45;
             }
 
-            /* ── Assistant Bubble (Left) ── */
+            /* ── Assistant Bubble (Left for You, Right for Interviewer) ── */
 
             .bubble-ai-wrap {
                 display: flex;
@@ -345,6 +395,14 @@ export class AssistantView extends LitElement {
                 align-items: flex-start;
                 max-width: 85%;
                 gap: 4px;
+            }
+
+            .bubble-ai-wrap.you {
+                align-items: flex-start !important;
+            }
+
+            .bubble-ai-wrap.interviewer {
+                align-items: flex-end !important;
             }
 
             .bubble-ai {
@@ -361,6 +419,14 @@ export class AssistantView extends LitElement {
                 box-sizing: border-box;
             }
 
+            .bubble-ai.you {
+                border-radius: 18px 18px 18px 4px !important;
+            }
+
+            .bubble-ai.interviewer {
+                border-radius: 18px 18px 4px 18px !important;
+            }
+
             .bubble-ai-content {
                 font-size: var(--response-font-size, 14px);
                 line-height: var(--line-height);
@@ -372,6 +438,16 @@ export class AssistantView extends LitElement {
                 font-size: 11px;
                 color: var(--text-muted);
                 padding-left: 4px;
+            }
+
+            .bubble-ai-meta.you {
+                padding-left: 4px !important;
+                padding-right: 0 !important;
+            }
+
+            .bubble-ai-meta.interviewer {
+                padding-right: 4px !important;
+                padding-left: 0 !important;
             }
 
             /* ── Markdown in AI Bubble ── */
@@ -1403,12 +1479,35 @@ export class AssistantView extends LitElement {
         }
     }
 
+    getTurnSpeaker(promptText, item) {
+        if (item && item.speaker) {
+            if (/^(You|Candidate|Me)$/i.test(item.speaker)) return 'you';
+            if (/^(Speaker|Interviewer)$/i.test(item.speaker)) return 'interviewer';
+        }
+
+        const candidateText = promptText || (item && item.prompt) || (typeof item === 'string' ? item : '') || '';
+        if (candidateText && typeof candidateText === 'string') {
+            const speakerRegex = /\[(Speaker|Interviewer|You|Candidate|Me)\]:\s*([\s\S]*?)(?=(?:\[(?:Speaker|Interviewer|You|Candidate|Me)\]:|$))/gi;
+            const matches = [...candidateText.matchAll(speakerRegex)];
+            if (matches.length > 0) {
+                const lastSpeaker = matches[matches.length - 1][1];
+                if (/^(You|Candidate|Me)$/i.test(lastSpeaker)) {
+                    return 'you';
+                }
+                return 'interviewer';
+            }
+        }
+
+        return 'you';
+    }
+
     renderLiveIndicator() {
         if (this.liveThinking && this.liveThinking.isThinking) {
+            const speakerClass = this.getTurnSpeaker(this.liveThinking.prompt, this.liveThinking);
             return html`
-                <div class="chat-row ai live-row">
-                    <div class="bubble-ai-wrap">
-                        <div class="bubble-ai live-ai-bubble">
+                <div class="chat-row ai live-row ${speakerClass}">
+                    <div class="bubble-ai-wrap ${speakerClass}">
+                        <div class="bubble-ai live-ai-bubble ${speakerClass}">
                             <div class="live-thinking-content">
                                 <span>Assistant is thinking</span>
                                 <div class="typing-dots-wrap">
@@ -1425,9 +1524,9 @@ export class AssistantView extends LitElement {
 
         if (this.isMicMuted && this.isSpeakerMuted) {
             return html`
-                <div class="chat-row ai live-row">
-                    <div class="bubble-ai-wrap">
-                        <div class="bubble-ai live-ai-bubble muted-live-bubble">
+                <div class="chat-row ai live-row you">
+                    <div class="bubble-ai-wrap you">
+                        <div class="bubble-ai live-ai-bubble muted-live-bubble you">
                             <div class="live-thinking-content">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
                                     <line x1="1" y1="1" x2="23" y2="23" />
@@ -1453,10 +1552,10 @@ export class AssistantView extends LitElement {
 
         if (liveText && liveText.trim()) {
             return html`
-                <div class="chat-row user live-row">
-                    <div class="bubble-user-wrap">
-                        <div class="bubble-user typing-bubble">${this.renderFormattedLivePrompt(liveText, speaker)}</div>
-                        <div class="bubble-user-meta live-user-meta">
+                <div class="chat-row user live-row ${speakerClass}">
+                    <div class="bubble-user-wrap ${speakerClass}">
+                        <div class="bubble-user typing-bubble ${speakerClass}">${this.renderFormattedLivePrompt(liveText, speaker)}</div>
+                        <div class="bubble-user-meta live-user-meta ${speakerClass}">
                             <div class="typing-dots-wrap">
                                 <span class="typing-dot"></span>
                                 <span class="typing-dot"></span>
@@ -1477,9 +1576,9 @@ export class AssistantView extends LitElement {
                   : null;
 
             return html`
-                <div class="chat-row user live-row">
-                    <div class="bubble-user-wrap">
-                        <div class="bubble-user typing-bubble">
+                <div class="chat-row user live-row ${speakerClass}">
+                    <div class="bubble-user-wrap ${speakerClass}">
+                        <div class="bubble-user typing-bubble ${speakerClass}">
                             <div class="typing-bubble-inner">
                                 <div class="speaker-turn-badge ${speakerClass}">
                                     ${
@@ -1502,7 +1601,7 @@ export class AssistantView extends LitElement {
                                 </div>
                             </div>
                         </div>
-                        ${subtitle ? html`<div class="bubble-user-meta live-user-meta" style="color: #f59e0b;">${subtitle}</div>` : ''}
+                        ${subtitle ? html`<div class="bubble-user-meta live-user-meta ${speakerClass}" style="color: #f59e0b;">${subtitle}</div>` : ''}
                     </div>
                 </div>
             `;
@@ -1581,11 +1680,12 @@ export class AssistantView extends LitElement {
 
         const speakerRegex = /\[(Speaker|Interviewer|You|Candidate|Me)\]:\s*([\s\S]*?)(?=(?:\[(?:Speaker|Interviewer|You|Candidate|Me)\]:|$))/gi;
         const matches = [...promptText.matchAll(speakerRegex)];
+        const speakerClass = this.getTurnSpeaker(promptText);
 
         return html`
-            <div class="chat-row user">
-                <div class="bubble-user-wrap">
-                    <div class="bubble-user">
+            <div class="chat-row user ${speakerClass}">
+                <div class="bubble-user-wrap ${speakerClass}">
+                    <div class="bubble-user ${speakerClass}">
                         ${
                             matches.length > 0
                                 ? matches.map(m => {
@@ -1593,11 +1693,11 @@ export class AssistantView extends LitElement {
                                       const text = m[2].trim();
                                       if (!text) return '';
                                       const isYou = /^(You|Candidate|Me)$/i.test(rawSpeaker);
-                                      const speakerClass = isYou ? 'you' : 'interviewer';
+                                      const turnClass = isYou ? 'you' : 'interviewer';
                                       const speakerLabel = isYou ? 'You' : 'Interviewer';
                                       return html`
                                           <div class="speaker-turn-block">
-                                              <div class="speaker-turn-badge ${speakerClass}">
+                                              <div class="speaker-turn-badge ${turnClass}">
                                                   ${
                                                       isYou
                                                           ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1618,7 +1718,7 @@ export class AssistantView extends LitElement {
                                 : html`<div class="bubble-user-content">${promptText}</div>`
                         }
                     </div>
-                    <div class="bubble-user-meta">${this.formatTime(timestamp)}</div>
+                    <div class="bubble-user-meta ${speakerClass}">${this.formatTime(timestamp)}</div>
                 </div>
             </div>
         `;
@@ -1631,11 +1731,12 @@ export class AssistantView extends LitElement {
         const renderedMarkdown = this.renderMarkdown(text);
         const imageData = typeof item === 'object' && item !== null ? item.image || item.imagePath || null : null;
         const timestamp = typeof item === 'object' && item !== null ? item.timestamp : null;
+        const speakerClass = this.getTurnSpeaker(null, item);
 
         return html`
-            <div class="chat-row ai">
-                <div class="bubble-ai-wrap">
-                    <div class="bubble-ai">
+            <div class="chat-row ai ${speakerClass}">
+                <div class="bubble-ai-wrap ${speakerClass}">
+                    <div class="bubble-ai ${speakerClass}">
                         ${
                             imageData
                                 ? html`
@@ -1658,7 +1759,7 @@ export class AssistantView extends LitElement {
                         }
                         <div class="bubble-ai-content" .innerHTML=${renderedMarkdown}></div>
                     </div>
-                    <div class="bubble-ai-meta">${this.formatTime(timestamp)}</div>
+                    <div class="bubble-ai-meta ${speakerClass}">${this.formatTime(timestamp)}</div>
                 </div>
             </div>
         `;

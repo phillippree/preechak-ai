@@ -1,5 +1,6 @@
 // renderer.js
 const { ipcRenderer } = require('electron');
+const { defaultSessionManager, defaultOrchestrator, defaultRegistry } = require('./services');
 
 let mediaStream = null;
 let screenshotInterval = null;
@@ -1387,6 +1388,11 @@ const preechakAi = {
 
     // Refresh preferences cache (call after updating preferences)
     refreshPreferencesCache: loadPreferencesCache,
+
+    // Modular Session Pipeline API
+    sessionManager: defaultSessionManager,
+    profileOrchestrator: defaultOrchestrator,
+    blockRegistry: defaultRegistry,
 
     // Platform detection
     isLinux: isLinux,
