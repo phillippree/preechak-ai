@@ -236,7 +236,31 @@ function clearActiveAttachments() {
     return getAttachmentsState();
 }
 
-// ============ SESSION LIFECYCLE ============
+function switchSessionProfile(newProfile, customPrompt = '') {
+    sessionProfile = newProfile;
+    sessionCustomPrompt = customPrompt;
+    const prefs = getPreferences() || {};
+    const googleSearchEnabled = prefs.googleSearchEnabled === true;
+    const newSystemPrompt = getSystemPrompt(sessionProfile, sessionCustomPrompt, googleSearchEnabled);
+
+    if (httpConversationHistory.length > 0) {
+        httpConversationHistory.push({
+            role: 'user',
+            parts: [
+                {
+                    text: `[System Instruction Update]: Session mode has switched to "${newProfile}". Adopt the following instructions, role, and formatting from now on:\n\n${newSystemPrompt}`,
+                },
+            ],
+        });
+        httpConversationHistory.push({
+            role: 'model',
+            parts: [{ text: `Acknowledged. Switched to ${newProfile} mode. Following updated instructions.` }],
+        });
+    }
+
+    console.log(`[Gemini HTTP] Switched session profile to ${newProfile}`);
+    return { success: true, profile: newProfile, systemPrompt: newSystemPrompt };
+}
 
 async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US') {
     sessionGeneration++;
@@ -972,6 +996,7 @@ async function handleHttpScreenshot(base64Data, prompt, savedImagePath = null) {
 module.exports = {
     initializeGeminiHttpSession,
     closeGeminiHttpSession,
+    switchSessionProfile,
     isGeminiHttpActive,
     processHttpAudioChunk,
     sendTextToGeminiHttp,

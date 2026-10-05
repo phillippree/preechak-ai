@@ -30,6 +30,14 @@ const promptBlocks = [
         systemPromptModifier: 'You are a senior staff software engineer pair-programming and reviewing code in real-time.',
     },
     {
+        id: 'design_system',
+        name: 'Design System & UI/UX Expert',
+        description: 'Provides design token architecture, component patterns, accessibility, and CSS specifications.',
+        role: 'designSystem',
+        formatInstructions: 'Provide concise, accessible component patterns, token references, and semantic styling.',
+        systemPromptModifier: 'You are a staff design systems engineer and accessibility specialist assisting in real-time.',
+    },
+    {
         id: 'general_assistant',
         name: 'General Real-Time Assistant',
         description: 'Versatile assistant for conversational queries, screen interpretation, and general transcription.',

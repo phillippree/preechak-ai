@@ -32,7 +32,7 @@ class SessionManager {
         this._transitionState('starting');
 
         const profileId = options.profile || this.orchestrator.getActiveProfileId();
-        this.activePipeline = this.orchestrator.resolvePipeline(profileId, options);
+        this.activePipeline = this.orchestrator.setProfile(profileId, options);
         this.activeSessionId = options.sessionId || `session_${Date.now()}`;
         this.startTime = Date.now();
 

@@ -178,6 +178,12 @@ export class AssistantView extends LitElement {
                 color: #4ade80;
             }
 
+            .chat-event-badge.mode-change {
+                background: rgba(99, 102, 241, 0.08);
+                border-color: rgba(99, 102, 241, 0.35);
+                color: #818cf8;
+            }
+
             .chat-event-time {
                 opacity: 0.6;
                 font-size: 10px;
@@ -815,6 +821,64 @@ export class AssistantView extends LitElement {
                 pointer-events: none;
             }
 
+            .session-mode-pill-wrap {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                flex-shrink: 0;
+            }
+
+            .session-mode-pill {
+                appearance: none;
+                -webkit-appearance: none;
+                background: var(--bg-surface);
+                border: 1px solid var(--border);
+                color: var(--text-secondary);
+                border-radius: 100px;
+                padding: 0 24px 0 12px;
+                font-size: var(--font-size-xs);
+                font-family: var(--font-mono);
+                cursor: pointer;
+                outline: none;
+                height: 32px;
+                box-sizing: border-box;
+                display: flex;
+                align-items: center;
+                transition:
+                    border-color 0.2s ease,
+                    color var(--transition),
+                    background var(--transition);
+            }
+
+            .session-mode-pill:hover {
+                border-color: var(--accent);
+                color: var(--text-primary);
+                background: var(--bg-elevated);
+            }
+
+            .session-mode-pill:focus {
+                border-color: var(--accent);
+            }
+
+            .session-mode-pill option {
+                background: var(--bg-surface);
+                color: var(--text-primary);
+            }
+
+            .session-mode-pill-wrap::after {
+                content: '';
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 0;
+                height: 0;
+                border-left: 3.5px solid transparent;
+                border-right: 3.5px solid transparent;
+                border-top: 4px solid var(--text-muted);
+                pointer-events: none;
+            }
+
             /* ── Lightbox Modal ── */
 
             .image-modal-overlay {
@@ -1095,6 +1159,7 @@ export class AssistantView extends LitElement {
         isMicMuted: { type: Boolean },
         isSpeakerMuted: { type: Boolean },
         onSendText: { type: Function },
+        onProfileChange: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         isAnalyzing: { type: Boolean, state: true },
         previewImage: { type: String, state: true },
@@ -1116,6 +1181,7 @@ export class AssistantView extends LitElement {
         this.isMicMuted = false;
         this.isSpeakerMuted = false;
         this.onSendText = () => {};
+        this.onProfileChange = () => {};
         this.isAnalyzing = false;
         this.previewImage = null;
         this._animFrame = null;
@@ -1123,6 +1189,13 @@ export class AssistantView extends LitElement {
         this.hasNewMessagesWhileScrolled = false;
         this.attachmentsState = { activeAttachmentIds: [], activeAttachments: [], screenshots: [] };
         this.showHistoryPicker = false;
+    }
+
+    _handleProfileSelect(newProfile) {
+        this.selectedProfile = newProfile;
+        if (typeof this.onProfileChange === 'function') {
+            this.onProfileChange(newProfile);
+        }
     }
 
     getProfileNames() {
@@ -1789,6 +1862,21 @@ export class AssistantView extends LitElement {
                 }
                 ${this.responses.map(item => {
                     if (item && item.type === 'status_event') {
+                        if (item.eventType === 'profile_change') {
+                            return html`
+                                <div class="chat-event-row">
+                                    <div class="chat-event-badge mode-change">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
+                                        </svg>
+                                        <span>${item.text}</span>
+                                        <span class="chat-event-time">${this.formatTime(item.timestamp)}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }
+
                         return html`
                             <div class="chat-event-row">
                                 <div class="chat-event-badge ${item.isMuted ? 'muted' : 'unmuted'}">
@@ -1849,6 +1937,22 @@ export class AssistantView extends LitElement {
             ${this.renderAttachmentControls()}
 
             <div class="input-bar">
+                <div class="session-mode-pill-wrap">
+                    <select
+                        class="session-mode-pill"
+                        .value=${this.selectedProfile}
+                        @change=${e => this._handleProfileSelect(e.target.value)}
+                        title="Switch Session Mode"
+                    >
+                        <option value="interview" ?selected=${this.selectedProfile === 'interview'}>Interview</option>
+                        <option value="meeting" ?selected=${this.selectedProfile === 'meeting'}>Meeting</option>
+                        <option value="sales" ?selected=${this.selectedProfile === 'sales'}>Sales Call</option>
+                        <option value="presentation" ?selected=${this.selectedProfile === 'presentation'}>Presentation</option>
+                        <option value="negotiation" ?selected=${this.selectedProfile === 'negotiation'}>Negotiation</option>
+                        <option value="exam" ?selected=${this.selectedProfile === 'exam'}>Exam</option>
+                        <option value="designSystem" ?selected=${this.selectedProfile === 'designSystem'}>Design System</option>
+                    </select>
+                </div>
                 <div class="input-bar-inner">
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
                 </div>

@@ -25,6 +25,11 @@ If its python code, don't use fancy library just use the basics. Only use advanc
     exam: `Solve the questions visible on this screen directly and concisely.
 - For each question, output: **Question**, **Answer**, and a brief **Why**.
 - Be direct, accurate, and concise.`,
+    designSystem: `Analyze this UI/UX design, screen, or component library.
+- Identify design token usage (colors, typography, spacing, shadows).
+- Review component structure, variants, states (hover, focus, active, disabled), and hierarchy.
+- Flag accessibility (WCAG) contrast or layout issues and suggest semantic fixes.
+- Provide clean, reusable code snippets (CSS tokens, HTML/JSX structure) where applicable.`,
 };
 
 export class CustomizeView extends LitElement {
@@ -299,6 +304,7 @@ export class CustomizeView extends LitElement {
             { value: 'presentation', name: 'Presentation' },
             { value: 'negotiation', name: 'Negotiation' },
             { value: 'exam', name: 'Exam Assistant' },
+            { value: 'designSystem', name: 'Design System' },
         ];
     }
 

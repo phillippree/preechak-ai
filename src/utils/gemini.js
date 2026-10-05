@@ -1826,6 +1826,19 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('switch-session-profile', async (event, profile, customPrompt) => {
+        try {
+            console.log(`[Session] Switching profile to ${profile}`);
+            if (currentProviderMode === 'byok_http') {
+                return getGeminiHttp().switchSessionProfile(profile, customPrompt);
+            }
+            return { success: true, profile };
+        } catch (error) {
+            console.error('Error switching session profile:', error);
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 module.exports = {

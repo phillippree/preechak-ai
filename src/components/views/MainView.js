@@ -1714,6 +1714,7 @@ export class MainView extends LitElement {
                     <option value="presentation">Presentation</option>
                     <option value="negotiation">Negotiation</option>
                     <option value="exam">Exam Assistant</option>
+                    <option value="designSystem">Design System</option>
                 </select>
             </div>
 

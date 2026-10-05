@@ -300,6 +300,7 @@ export class PreechakAiApp extends LitElement {
             font-weight: var(--font-weight-medium);
             white-space: nowrap;
             pointer-events: none;
+            z-index: 1;
         }
 
         .live-bar-right {
@@ -874,6 +875,28 @@ export class PreechakAiApp extends LitElement {
         if (window.preechakAi && window.preechakAi.sessionManager) {
             window.preechakAi.sessionManager.switchProfile(profile);
         }
+        if (window.preechakAi && typeof window.preechakAi.switchSessionProfile === 'function') {
+            await window.preechakAi.switchSessionProfile(profile);
+        }
+        if (this.sessionActive || this._isLiveMode()) {
+            const profileNames = {
+                interview: 'Job Interview',
+                meeting: 'Business Meeting',
+                sales: 'Sales Call',
+                presentation: 'Presentation',
+                negotiation: 'Negotiation',
+                exam: 'Exam Assistant',
+            };
+            const modeName = profileNames[profile] || profile;
+            this.addNewResponse({
+                type: 'status_event',
+                eventType: 'profile_change',
+                text: `Mode changed to ${modeName} — Prompt injected`,
+                profile: profile,
+                timestamp: Date.now(),
+            });
+        }
+        this.requestUpdate();
     }
 
     async handleLanguageChange(language) {
@@ -1005,6 +1028,7 @@ export class PreechakAiApp extends LitElement {
                         .isMicMuted=${this._isMicMuted}
                         .isSpeakerMuted=${this._isSpeakerMuted}
                         .onSendText=${msg => this.handleSendText(msg)}
+                        .onProfileChange=${p => this.handleProfileChange(p)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
                         @response-index-changed=${this.handleResponseIndexChanged}
                         @response-animation-complete=${() => {
@@ -1131,12 +1155,13 @@ export class PreechakAiApp extends LitElement {
         if (!this._isLiveMode()) return '';
 
         const profileLabels = {
-            interview: 'Interview',
+            interview: 'Job Interview',
+            meeting: 'Business Meeting',
             sales: 'Sales Call',
-            meeting: 'Meeting',
             presentation: 'Presentation',
             negotiation: 'Negotiation',
-            exam: 'Exam',
+            exam: 'Exam Assistant',
+            designSystem: 'Design System',
         };
 
         return html`

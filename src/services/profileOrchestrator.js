@@ -73,6 +73,22 @@ const DEFAULT_PROFILE_RECIPES = {
         transportBlockId: 'gemini_live_websocket',
         defaultAudioMode: 'both',
     },
+    'design-system': {
+        id: 'design-system',
+        name: 'Design System',
+        audioBlockId: 'dual_stream',
+        promptBlockId: 'design_system',
+        transportBlockId: 'gemini_http_rest',
+        defaultAudioMode: 'both',
+    },
+    designSystem: {
+        id: 'designSystem',
+        name: 'Design System',
+        audioBlockId: 'dual_stream',
+        promptBlockId: 'design_system',
+        transportBlockId: 'gemini_http_rest',
+        defaultAudioMode: 'both',
+    },
 };
 
 class ProfileOrchestrator {

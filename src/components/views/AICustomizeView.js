@@ -91,6 +91,7 @@ export class AICustomizeView extends LitElement {
             presentation: 'Presentation',
             negotiation: 'Negotiation',
             exam: 'Exam Assistant',
+            designSystem: 'Design System',
         };
         return names[profile] || profile;
     }
@@ -103,6 +104,7 @@ export class AICustomizeView extends LitElement {
             presentation: 'Talk topic, key audience takeaways, time limit, tone/style...',
             negotiation: 'Target price/terms, fallback positions, red lines, leverage points...',
             exam: 'Course subject, formula sheets, special rules or answer format constraints...',
+            designSystem: 'Design tokens, component props, CSS framework rules, a11y/WCAG level, brand guidelines...',
         };
         return placeholders[profile] || 'Custom instructions, role requirements, constraints...';
     }
@@ -115,6 +117,7 @@ export class AICustomizeView extends LitElement {
             { value: 'presentation', label: 'Presentation' },
             { value: 'negotiation', label: 'Negotiation' },
             { value: 'exam', label: 'Exam Assistant' },
+            { value: 'designSystem', label: 'Design System' },
         ];
 
         return html`

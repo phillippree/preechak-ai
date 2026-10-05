@@ -201,6 +201,13 @@ async function initializeCloud(profile = 'interview') {
     }
 }
 
+async function switchSessionProfile(profile) {
+    const prefs = await storage.getPreferences();
+    const customPrompt =
+        prefs.customPrompts && typeof prefs.customPrompts[profile] === 'string' ? prefs.customPrompts[profile] : prefs.customPrompt || '';
+    return ipcRenderer.invoke('switch-session-profile', profile, customPrompt);
+}
+
 // Listen for status updates
 ipcRenderer.on('update-status', (event, status) => {
     console.log('Status update:', status);
@@ -1388,6 +1395,9 @@ const preechakAi = {
 
     // Refresh preferences cache (call after updating preferences)
     refreshPreferencesCache: loadPreferencesCache,
+
+    // Session Profile Switching
+    switchSessionProfile: switchSessionProfile,
 
     // Modular Session Pipeline API
     sessionManager: defaultSessionManager,
