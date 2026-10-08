@@ -127,8 +127,20 @@ function formatLanguageName(lang) {
 /**
  * Custom code block renderer for Marked producing IDE-style snippet wrappers.
  */
+function renderMermaidBlock(code) {
+    const encodedSource = encodeURIComponent(code);
+    return `<div class="mermaid-diagram" data-mermaid-source="${encodedSource}" role="group" aria-label="Mermaid diagram">
+  <div class="mermaid-render-target" role="img" aria-label="Rendered architecture diagram"></div>
+  <details class="mermaid-source">
+    <summary>View Mermaid source</summary>
+    <pre><code>${escapeHtml(code)}</code></pre>
+  </details>
+</div>`;
+}
+
 function renderCodeBlock(code, language, hljs) {
     const resolvedLang = resolveLanguage(language);
+    if (resolvedLang === 'mermaid') return renderMermaidBlock(code);
     let highlightedHtml = '';
     let isHighlighted = false;
 
@@ -478,6 +490,52 @@ function completeStreamMarkdown(text) {
 /**
  * Main renderMarkdown function. Parses markdown text to sanitized HTML with highlighted code blocks.
  */
+let mermaidInitialized = false;
+let mermaidRenderCounter = 0;
+
+/**
+ * Render Mermaid placeholders after their Markdown has been attached to the DOM.
+ * The source remains available in a details block if rendering is unavailable or fails.
+ */
+async function renderMermaidDiagrams(root) {
+    const mermaid = typeof globalThis !== 'undefined' ? globalThis.mermaid : null;
+    if (!root || !mermaid || typeof mermaid.render !== 'function') return false;
+
+    if (!mermaidInitialized) {
+        mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict',
+            theme: 'dark',
+            flowchart: { htmlLabels: false, useMaxWidth: true },
+            sequence: { useMaxWidth: true },
+        });
+        mermaidInitialized = true;
+    }
+
+    const diagrams = Array.from(root.querySelectorAll('.mermaid-diagram:not([data-render-state])'));
+    await Promise.all(
+        diagrams.map(async diagram => {
+            diagram.setAttribute('data-render-state', 'rendering');
+            const target = diagram.querySelector('.mermaid-render-target');
+            try {
+                const source = decodeURIComponent(diagram.getAttribute('data-mermaid-source') || '');
+                const id = `preechak-mermaid-${++mermaidRenderCounter}`;
+                const result = await mermaid.render(id, source);
+                if (target) target.innerHTML = typeof result === 'string' ? result : result.svg;
+                if (result && typeof result.bindFunctions === 'function' && target) result.bindFunctions(target);
+                diagram.setAttribute('data-render-state', 'rendered');
+            } catch (error) {
+                if (target) target.textContent = 'Diagram could not be rendered. Open “View Mermaid source” to inspect it.';
+                diagram.classList.add('mermaid-render-error');
+                diagram.setAttribute('data-render-state', 'error');
+                console.warn('Error rendering Mermaid diagram:', error);
+            }
+        })
+    );
+
+    return diagrams.length > 0;
+}
+
 function renderMarkdown(content) {
     if (!content || typeof content !== 'string') return '';
 
@@ -566,6 +624,7 @@ async function handleCodeCopyClick(event) {
 
 export {
     renderMarkdown,
+    renderMermaidDiagrams,
     handleCodeCopyClick,
     escapeHtml,
     resolveLanguage,

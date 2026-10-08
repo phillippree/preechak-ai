@@ -1,7 +1,7 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { unifiedPageStyles } from './sharedPageStyles.js';
 import { markdownStyles } from './markdownStyles.js';
-import { renderMarkdown, handleCodeCopyClick } from '../../utils/markdownRenderer.js';
+import { renderMarkdown, renderMermaidDiagrams, handleCodeCopyClick } from '../../utils/markdownRenderer.js';
 
 export class HistoryView extends LitElement {
     static styles = [
@@ -741,6 +741,7 @@ export class HistoryView extends LitElement {
     }
 
     updated(changedProperties) {
+        renderMermaidDiagrams(this.shadowRoot);
         if (changedProperties.has('editingSessionId') && this.editingSessionId) {
             const input = this.renderRoot?.querySelector('.title-inline-input');
             if (input) {

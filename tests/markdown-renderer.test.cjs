@@ -50,6 +50,77 @@ test('resolves language aliases and formats display names', async () => {
     assert.equal(formatLanguageName(''), 'Code');
 });
 
+test('renders Mermaid fences as a diagram placeholder with readable source', async () => {
+    const { renderMarkdown } = await loadRenderer();
+    const diagram = `flowchart TD
+    Client --> API
+    API --> Database`;
+    const html = renderMarkdown(`\`\`\`mermaid\n${diagram}\n\`\`\``);
+
+    assert.ok(html.includes('class="mermaid-diagram"'));
+    assert.ok(html.includes('data-mermaid-source="' + encodeURIComponent(diagram) + '"'));
+    assert.ok(html.includes('View Mermaid source'));
+    assert.ok(html.includes('Client --&gt; API'));
+    assert.ok(!html.includes('code-block-copy-btn'));
+});
+
+test('renders Mermaid SVG and applies strict security configuration', async () => {
+    const { renderMermaidDiagrams } = await loadRenderer();
+    const originalMermaid = globalThis.mermaid;
+    const calls = [];
+    const target = { innerHTML: '' };
+    const attrs = { 'data-mermaid-source': encodeURIComponent('flowchart TD\nA --> B') };
+    const diagram = {
+        classList: { add(name) { calls.push(['class', name]); } },
+        getAttribute(name) { return attrs[name] || null; },
+        setAttribute(name, value) { attrs[name] = value; },
+        querySelector() { return target; },
+    };
+    globalThis.mermaid = {
+        initialize(config) { calls.push(['initialize', config]); },
+        async render(id, source) {
+            calls.push(['render', id, source]);
+            return { svg: '<svg aria-label="diagram"></svg>' };
+        },
+    };
+
+    try {
+        assert.equal(await renderMermaidDiagrams({ querySelectorAll: () => [diagram] }), true);
+        assert.equal(target.innerHTML, '<svg aria-label="diagram"></svg>');
+        assert.equal(attrs['data-render-state'], 'rendered');
+        assert.equal(calls[0][1].securityLevel, 'strict');
+        assert.equal(calls[1][2], 'flowchart TD\nA --> B');
+    } finally {
+        if (originalMermaid === undefined) delete globalThis.mermaid;
+        else globalThis.mermaid = originalMermaid;
+    }
+});
+
+test('keeps Mermaid source available when diagram parsing fails', async () => {
+    const { renderMermaidDiagrams } = await loadRenderer();
+    const originalMermaid = globalThis.mermaid;
+    const target = { textContent: '' };
+    const attrs = { 'data-mermaid-source': encodeURIComponent('not a diagram') };
+    const classes = [];
+    const diagram = {
+        classList: { add(name) { classes.push(name); } },
+        getAttribute(name) { return attrs[name] || null; },
+        setAttribute(name, value) { attrs[name] = value; },
+        querySelector() { return target; },
+    };
+    globalThis.mermaid = { initialize() {}, async render() { throw new Error('parse error'); } };
+
+    try {
+        await renderMermaidDiagrams({ querySelectorAll: () => [diagram] });
+        assert.equal(attrs['data-render-state'], 'error');
+        assert.ok(classes.includes('mermaid-render-error'));
+        assert.match(target.textContent, /View Mermaid source/);
+    } finally {
+        if (originalMermaid === undefined) delete globalThis.mermaid;
+        else globalThis.mermaid = originalMermaid;
+    }
+});
+
 test('highlights Python code with syntax tokens and code wrapper', async () => {
     const { renderMarkdown } = await loadRenderer();
     const pythonSnippet = `\`\`\`python

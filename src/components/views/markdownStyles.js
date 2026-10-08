@@ -195,6 +195,53 @@ export const markdownStyles = css`
         font-size: 1.05em;
     }
 
+    /* ── Mermaid Diagrams ── */
+    .mermaid-diagram {
+        margin: 0.9em 0;
+        padding: 12px;
+        overflow-x: auto;
+        border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+        border-radius: var(--radius-md, 8px);
+        background: var(--bg-elevated, #191919);
+    }
+
+    .mermaid-render-target {
+        min-width: min-content;
+        text-align: center;
+    }
+
+    .mermaid-render-target svg {
+        display: inline-block;
+        max-width: 100%;
+        height: auto;
+    }
+
+    .mermaid-render-error .mermaid-render-target {
+        color: var(--text-secondary, #999);
+        text-align: left;
+    }
+
+    .mermaid-source {
+        margin-top: 8px;
+        color: var(--text-secondary, #999);
+        font-size: 0.85em;
+    }
+
+    .mermaid-source summary {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .mermaid-source pre {
+        max-height: 320px;
+        overflow: auto;
+        padding: 10px;
+        border-radius: var(--radius-sm, 4px);
+        background: rgba(0, 0, 0, 0.18);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
     /* ── Editor-Style Code Blocks ── */
     .code-block-wrapper {
         margin: 0.9em 0;

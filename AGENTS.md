@@ -124,3 +124,25 @@ Before implementing any new feature, task, or requested changes, always explain:
 ### 3. Confirmation Required
 
 - **Always ask for confirmation before you implement (non-negotiable)**: Wait for explicit user confirmation before modifying code or executing changes.
+
+## Commit Message Format
+
+When asked to provide a commit message, use this format:
+
+- First line: a concise Conventional Commit subject such as `fix: ...`, `feat: ...`, or `docs: ...`.
+- Leave one blank line after the subject.
+- Add a short body explaining what changed and why. Wrap body lines at a readable length.
+- Leave one blank line before an optional final paragraph describing tests or regression coverage.
+- Return only the commit message in a plain text code block unless the user asks for explanation.
+
+Example:
+
+```text
+fix: isolate screenshot prompts from profile context
+
+Use the saved screenshot prompt as the system instruction for Gemini
+HTTP screenshot analysis. Exclude the active profile prompt and prior
+conversation turns so they cannot conflict with the screenshot task.
+
+Add regression tests for prompt isolation and request contents.
+```

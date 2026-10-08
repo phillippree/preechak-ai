@@ -23,6 +23,7 @@
     "dependencies": {
         "@google/genai": "^1.2.0",
         "electron-squirrel-startup": "^1.0.1",
+        "mermaid": "10.9.3",
         "ws": "^8.19.0"
     },
     "devDependencies": {

@@ -1,6 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { markdownStyles } from './markdownStyles.js';
-import { renderMarkdown, handleCodeCopyClick } from '../../utils/markdownRenderer.js';
+import { renderMarkdown, renderMermaidDiagrams, handleCodeCopyClick } from '../../utils/markdownRenderer.js';
 
 export class AssistantView extends LitElement {
     static styles = [
@@ -1522,6 +1522,7 @@ export class AssistantView extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
+        renderMermaidDiagrams(this.shadowRoot);
 
         if (changedProperties.has('responses')) {
             if (!this.isScrolledUp) {
