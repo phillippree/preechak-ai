@@ -203,4 +203,70 @@ test('markdownStyles configures word wrapping and prevents horizontal overflow f
     assert.ok(cssContent.includes('overflow-wrap: anywhere;'), 'Code block should have overflow-wrap: anywhere');
     assert.ok(cssContent.includes('overflow-x: hidden;'), 'Code block pre should have overflow-x: hidden');
     assert.ok(cssContent.includes('background: var(--bg-elevated'), 'Code block wrapper should use dynamic bg-elevated variable');
+    assert.ok(cssContent.includes('.math-inline'), 'Styles should include .math-inline');
+    assert.ok(cssContent.includes('.math-block'), 'Styles should include .math-block');
+});
+
+test('renders LaTeX math expressions into human-readable symbols and HTML', async () => {
+    const { renderMarkdown, convertLatexExpression } = await loadRenderer();
+
+    // 1. Direct symbol & expression unit conversions
+    assert.equal(convertLatexExpression('\\approx 1.37\\text{ bytes}'), '≈ 1.37 bytes');
+    assert.equal(convertLatexExpression('\\sim 5{,}000\\text{ QPS}'), '~ 5,000 QPS');
+    assert.equal(convertLatexExpression('3\\times'), '3×');
+    assert.equal(convertLatexExpression('P_{95} < 200\\text{ms}'), 'P<sub>95</sub> < 200ms');
+    assert.equal(convertLatexExpression('10^{6}'), '10<sup>6</sup>');
+    assert.equal(convertLatexExpression('\\alpha + \\beta \\le \\gamma'), 'α + β ≤ γ');
+    assert.equal(convertLatexExpression('\\frac{10}{2} = 5'), '(10 / 2) = 5');
+    assert.equal(convertLatexExpression('\\sqrt{16} = 4'), '√(16) = 4');
+
+    // 2. Full markdown string with user example
+    const inputMd = `### Back-of-the-Envelope Calculations
+Timestamp compression: $\\approx 1.37\\text{ bytes}$.
+Value compression: $\\approx 1.5\\text{ bytes}$.
+Scale: $10\\text{M}$ metrics emitted/sec. Read QPS: $\\sim 5{,}000\\text{ QPS}$.
+Latency: $< 10\\text{s}$; query execution $P_{95} < 200\\text{ms}$.
+Lifecycle: (raw $\\rightarrow$ 1m $\\rightarrow$ 1h $\\rightarrow$ 1d).
+30-day retention with $3\\times$ replication: $12.96\\text{ TB} \\times 30 \\times 3 \\approx 1.16\\text{ PB}$.`;
+
+    const html = renderMarkdown(inputMd);
+
+    // Verify symbols replaced raw text
+    assert.ok(html.includes('≈ 1.37 bytes'));
+    assert.ok(html.includes('≈ 1.5 bytes'));
+    assert.ok(html.includes('10M'));
+    assert.ok(html.includes('~ 5,000 QPS'));
+    assert.ok(html.includes('P<sub>95</sub>'));
+    assert.ok(html.includes('→'));
+    assert.ok(html.includes('3×'));
+    assert.ok(html.includes('12.96 TB × 30 × 3 ≈ 1.16 PB'));
+    assert.ok(html.includes('class="math-inline"'));
+
+    // Verify raw backslashes are no longer visible in output
+    assert.ok(!html.includes('\\approx'));
+    assert.ok(!html.includes('\\text{'));
+    assert.ok(!html.includes('\\sim'));
+    assert.ok(!html.includes('\\rightarrow'));
+    assert.ok(!html.includes('{,}'));
+});
+
+test('renders block math $$ ... $$ and preserves code blocks without modifying code', async () => {
+    const { renderMarkdown } = await loadRenderer();
+
+    const blockMathMd = `Here is the formula:
+$$E = mc^2$$`;
+    const blockHtml = renderMarkdown(blockMathMd);
+    assert.ok(blockHtml.includes('class="math-block"'));
+    assert.ok(blockHtml.includes('E = mc<sup>2</sup>'));
+
+    // Code block with $ signs must not be corrupted
+    const codeSnippet = `\`\`\`bash
+# Bash script using variables
+VAR="test"
+echo "$VAR and $\\approx 100"
+\`\`\``;
+    const codeHtml = renderMarkdown(codeSnippet);
+    assert.ok(codeHtml.includes('class="code-block-wrapper"'));
+    assert.ok(codeHtml.includes('$VAR'));
+    assert.ok(codeHtml.includes('$\\approx 100'));
 });

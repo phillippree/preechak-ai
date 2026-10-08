@@ -196,16 +196,43 @@ test('new screenshot capture becomes active and stores turn in shared history', 
     assert.equal(state.activeAttachmentIds.length, 1);
     assert.equal(state.activeAttachmentIds[0], result.imageId);
 
-    // Request should contain inlineData and prompt
+    // Screenshot request uses its own prompt and image only, independent of profile/history.
     assert.equal(h.requests.length, 1);
-    const parts = h.requests[0].contents[0].parts;
-    assert.ok(parts.some(p => p.inlineData && p.inlineData.data === 'base64Image1Data'));
-    assert.ok(parts.some(p => p.text === '[Screen Analysis]: What does this diagram show?'));
+    const request = h.requests[0];
+    const parts = request.contents[0].parts;
+    assert.equal(request.config.systemInstruction, 'What does this diagram show?');
+    assert.equal(request.contents.length, 1);
+    assert.equal(request.contents[0].role, 'user');
+    assert.equal(parts[0].text, '[Screen Analysis]: What does this diagram show?');
+    assert.ok(parts[1].inlineData && parts[1].inlineData.data === 'base64Image1Data');
 
     // Turns should be saved
     assert.equal(h.saved.length, 1);
     assert.equal(h.saved[0][0], '[Screen Analysis]: What does this diagram show?');
     assert.equal(h.savedAnalyses.length, 1);
+});
+
+test('screenshot analysis ignores conflicting profile instructions and prior turns', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test', 'A profile instruction about UI/UX.', 'designSystem');
+
+    await h.api.handleHttpScreenshot('firstImage', 'Design a distributed cache.', '/fake/first.jpg');
+    const request = h.requests[0];
+    assert.equal(request.config.systemInstruction, 'Design a distributed cache.');
+    assert.equal(request.contents.length, 1);
+    assert.deepEqual(
+        Array.from(request.contents[0].parts, part => part.text || part.inlineData?.data),
+        ['[Screen Analysis]: Design a distributed cache.', 'firstImage']
+    );
+
+    await h.api.handleHttpScreenshot('secondImage', 'Design a URL shortener.', '/fake/second.jpg');
+    const nextRequest = h.requests[1];
+    assert.equal(nextRequest.config.systemInstruction, 'Design a URL shortener.');
+    assert.equal(nextRequest.contents.length, 1);
+    assert.deepEqual(
+        Array.from(nextRequest.contents[0].parts, part => part.text || part.inlineData?.data),
+        ['[Screen Analysis]: Design a URL shortener.', 'secondImage']
+    );
 });
 
 test('spoken and typed follow-ups include the active image', async () => {

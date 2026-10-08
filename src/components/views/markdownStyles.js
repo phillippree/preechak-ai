@@ -149,6 +149,52 @@ export const markdownStyles = css`
         margin: 1.2em 0;
     }
 
+    /* ── Math & LaTeX Typography ── */
+    .math-inline {
+        font-family: inherit;
+        font-style: normal;
+        padding: 0 0.15em;
+        color: var(--text-primary);
+        word-break: normal;
+    }
+
+    .math-inline sub,
+    .math-inline sup,
+    .markdown-body sub,
+    .markdown-body sup,
+    .bubble-ai-content sub,
+    .bubble-ai-content sup {
+        font-size: 0.78em;
+        line-height: 0;
+        position: relative;
+        vertical-align: baseline;
+    }
+
+    .math-inline sub,
+    .markdown-body sub,
+    .bubble-ai-content sub {
+        bottom: -0.25em;
+    }
+
+    .math-inline sup,
+    .markdown-body sup,
+    .bubble-ai-content sup {
+        top: -0.45em;
+    }
+
+    .math-block {
+        display: block;
+        margin: 0.8em 0;
+        padding: 10px 14px;
+        background: var(--bg-elevated, rgba(13, 17, 23, 0.6));
+        border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+        border-radius: var(--radius-sm, 6px);
+        text-align: center;
+        overflow-x: auto;
+        color: var(--text-primary);
+        font-size: 1.05em;
+    }
+
     /* ── Editor-Style Code Blocks ── */
     .code-block-wrapper {
         margin: 0.9em 0;

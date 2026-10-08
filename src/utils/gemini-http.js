@@ -923,15 +923,35 @@ async function handleHttpScreenshot(base64Data, prompt, savedImagePath = null) {
 
     const config = getConfig();
     const modelToUse = config.geminiHttpModel || 'gemini-3.8-flash';
-    const prefs = getPreferences() || {};
-    const googleSearchEnabled = prefs.googleSearchEnabled === true;
-    const systemPrompt = getSystemPrompt(sessionProfile, sessionCustomPrompt, googleSearchEnabled);
 
     try {
         const ai = new GoogleGenAI({ apiKey });
         sendToRenderer('update-status', 'Analyzing screen...');
 
-        const { contents, contextStats } = await buildHttpContext(ai, modelToUse, formattedPrompt, isCurrent, turnAttachmentIds);
+        // Screenshot instructions are task-specific. Do not mix in the active profile's
+        // system prompt or earlier conversation turns, which can contradict the prompt.
+        const contents = [
+            {
+                role: 'user',
+                parts: [
+                    { text: formattedPrompt },
+                    {
+                        inlineData: {
+                            mimeType: 'image/jpeg',
+                            data: base64Data,
+                        },
+                    },
+                ],
+            },
+        ];
+        const contextStats = {
+            retainedHistoryEntries: 0,
+            summarizedHistoryEntries: 0,
+            totalHistoryEntries: httpConversationHistory.length,
+            attachedImagesCount: 1,
+            estimatedImageTokens: ESTIMATED_IMAGE_TOKENS,
+            tokenSource: 'screenshot-isolated',
+        };
         if (!isCurrent()) return { success: false, error: 'Session closed' };
 
         console.log(`[Gemini HTTP] Sending screenshot analysis to ${modelToUse}...`);
@@ -940,7 +960,7 @@ async function handleHttpScreenshot(base64Data, prompt, savedImagePath = null) {
                 model: modelToUse,
                 contents: contents,
                 config: {
-                    systemInstruction: systemPrompt,
+                    systemInstruction: turnPrompt,
                 },
                 contextStats: contextStats,
             })

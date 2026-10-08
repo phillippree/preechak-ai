@@ -248,6 +248,220 @@ function sanitizeHtml(rawHtml) {
     return sanitized;
 }
 
+const LATEX_SYMBOLS = {
+    // Relations & Arrows
+    '\\approx': '≈',
+    '\\approxeq': '≅',
+    '\\sim': '~',
+    '\\simeq': '≃',
+    '\\cong': '≅',
+    '\\equiv': '≡',
+    '\\ne': '≠',
+    '\\neq': '≠',
+    '\\le': '≤',
+    '\\leq': '≤',
+    '\\ge': '≥',
+    '\\geq': '≥',
+    '\\ll': '≪',
+    '\\gg': '≫',
+    '\\rightarrow': '→',
+    '\\to': '→',
+    '\\leftarrow': '←',
+    '\\gets': '←',
+    '\\leftrightarrow': '↔',
+    '\\Rightarrow': '⇒',
+    '\\implies': '⇒',
+    '\\Leftarrow': '⇐',
+    '\\Leftrightarrow': '⇔',
+    '\\iff': '⇔',
+    '\\mapsto': '↦',
+    '\\uparrow': '↑',
+    '\\downarrow': '↓',
+
+    // Operators & Arithmetic
+    '\\times': '×',
+    '\\div': '÷',
+    '\\pm': '±',
+    '\\mp': '∓',
+    '\\cdot': '·',
+    '\\bullet': '•',
+    '\\circ': '°',
+    '\\deg': '°',
+    '\\infty': '∞',
+    '\\partial': '∂',
+    '\\nabla': '∇',
+    '\\sum': '∑',
+    '\\prod': '∏',
+    '\\int': '∫',
+    '\\oint': '∮',
+    '\\propto': '∝',
+    '\\in': '∈',
+    '\\notin': '∉',
+    '\\subset': '⊂',
+    '\\subseteq': '⊆',
+    '\\supset': '⊃',
+    '\\supseteq': '⊇',
+    '\\cup': '∪',
+    '\\cap': '∩',
+    '\\forall': '∀',
+    '\\exists': '∃',
+    '\\nexists': '∄',
+    '\\empty': '∅',
+    '\\emptyset': '∅',
+    '\\land': '∧',
+    '\\lor': '∨',
+    '\\neg': '¬',
+
+    // Greek Alphabet (Lower)
+    '\\alpha': 'α',
+    '\\beta': 'β',
+    '\\gamma': 'γ',
+    '\\delta': 'δ',
+    '\\epsilon': 'ε',
+    '\\varepsilon': 'ε',
+    '\\zeta': 'ζ',
+    '\\eta': 'η',
+    '\\theta': 'θ',
+    '\\vartheta': 'θ',
+    '\\iota': 'ι',
+    '\\kappa': 'κ',
+    '\\lambda': 'λ',
+    '\\mu': 'µ',
+    '\\nu': 'ν',
+    '\\xi': 'ξ',
+    '\\pi': 'π',
+    '\\varpi': 'ϖ',
+    '\\rho': 'ρ',
+    '\\varrho': 'ϱ',
+    '\\sigma': 'σ',
+    '\\varsigma': 'ς',
+    '\\tau': 'τ',
+    '\\upsilon': 'υ',
+    '\\phi': 'φ',
+    '\\varphi': 'φ',
+    '\\chi': 'χ',
+    '\\psi': 'ψ',
+    '\\omega': 'ω',
+
+    // Greek Alphabet (Upper)
+    '\\Gamma': 'Γ',
+    '\\Delta': 'Δ',
+    '\\Theta': 'Θ',
+    '\\Lambda': 'Λ',
+    '\\Xi': 'Ξ',
+    '\\Pi': 'Π',
+    '\\Sigma': 'Σ',
+    '\\Upsilon': 'Υ',
+    '\\Phi': 'Φ',
+    '\\Psi': 'Ψ',
+    '\\Omega': 'Ω',
+
+    // Ellipses & Spacing
+    '\\dots': '…',
+    '\\ldots': '…',
+    '\\cdots': '…',
+    '\\ddots': '⋱',
+    '\\vdots': '⋮',
+    '\\quad': '  ',
+    '\\qquad': '    ',
+    '\\,': ' ',
+    '\\;': ' ',
+    '\\:': ' ',
+    '\\!': '',
+};
+
+/**
+ * Converts a raw LaTeX mathematical expression into human-readable Unicode and HTML.
+ */
+function convertLatexExpression(expr) {
+    if (!expr || typeof expr !== 'string') return '';
+    let result = expr.trim();
+
+    // 1. Text and styling wrappers: \text{...}, \mathrm{...}, \mathbf{...}, \mathit{...}
+    result = result.replace(/\\(?:text|mathrm|operatorname)\{([^}]*)\}/g, '$1');
+    result = result.replace(/\\(?:mathbf|textbf)\{([^}]*)\}/g, '<strong>$1</strong>');
+    result = result.replace(/\\(?:mathit|textit)\{([^}]*)\}/g, '<em>$1</em>');
+
+    // 2. Comma inside number groupings: {,} -> ,
+    result = result.replace(/\{,\}/g, ',');
+
+    // 3. Fractions: \frac{a}{b} -> (a / b)
+    result = result.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '($1 / $2)');
+
+    // 4. Roots: \sqrt[n]{x} -> n√(x), \sqrt{x} -> √(x)
+    result = result.replace(/\\sqrt\[([^\]]*)\]\{([^}]*)\}/g, '$1√($2)');
+    result = result.replace(/\\sqrt\{([^}]*)\}/g, '√($1)');
+
+    // 5. Replace known LaTeX symbols
+    for (const [cmd, sym] of Object.entries(LATEX_SYMBOLS)) {
+        const escapedCmd = cmd.replace(/[\\^$*+?.()|[\]{}]/g, '\\$&');
+        const pattern = /[a-zA-Z]$/.test(cmd) ? new RegExp(`${escapedCmd}(?![a-zA-Z])`, 'g') : new RegExp(escapedCmd, 'g');
+        result = result.replace(pattern, sym);
+    }
+
+    // 6. Subscripts: P_{95} -> P<sub>95</sub>, x_i -> x<sub>i</sub>
+    result = result.replace(/([a-zA-Z0-9)\]])_\{([^}]+)\}/g, '$1<sub>$2</sub>');
+    result = result.replace(/([a-zA-Z0-9)\]])_([a-zA-Z0-9]+)/g, '$1<sub>$2</sub>');
+
+    // 7. Superscripts: 10^{6} -> 10<sup>6</sup>, x^2 -> x<sup>2</sup>
+    result = result.replace(/([a-zA-Z0-9)\]])\^\{([^}]+)\}/g, '$1<sup>$2</sup>');
+    result = result.replace(/([a-zA-Z0-9)\]])\^([a-zA-Z0-9]+)/g, '$1<sup>$2</sup>');
+
+    // 8. Clean up loose braces: {val} -> val
+    result = result.replace(/\{([^{}]+)\}/g, '$1');
+
+    // 9. Clean up spacing
+    result = result.replace(/\s+/g, ' ').trim();
+
+    return result;
+}
+
+/**
+ * Pre-processes Markdown text to convert LaTeX math ($...$ and $$...$$) outside code blocks into rendered symbols.
+ */
+function renderLatexMath(text) {
+    if (!text || typeof text !== 'string') return '';
+
+    // Step 1: Protect code blocks and inline code
+    const codePlaceholders = [];
+    let placeholderIndex = 0;
+
+    // Preserve fenced code blocks
+    let processed = text.replace(/(```[\s\S]*?```)/g, match => {
+        const token = `%%PREECHAK_CODE_BLOCK_${placeholderIndex++}%%`;
+        codePlaceholders.push({ token, value: match });
+        return token;
+    });
+
+    // Preserve inline code
+    processed = processed.replace(/(`[^`\n]+?`)/g, match => {
+        const token = `%%PREECHAK_INLINE_CODE_${placeholderIndex++}%%`;
+        codePlaceholders.push({ token, value: match });
+        return token;
+    });
+
+    // Step 2: Convert block math $$ ... $$
+    processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_, mathContent) => {
+        const converted = convertLatexExpression(mathContent);
+        return `<div class="math-block">${converted}</div>`;
+    });
+
+    // Step 3: Convert inline math $ ... $
+    // Match non-empty content between non-escaped dollar signs that does not span newlines
+    processed = processed.replace(/(?<!\\)\$([^\$\n]+?)(?<!\\)\$/g, (_, mathContent) => {
+        // Skip standalone currency strings like "$100" without math syntax if it was accidentally matched
+        const converted = convertLatexExpression(mathContent);
+        return `<span class="math-inline">${converted}</span>`;
+    });
+
+    // Step 4: Restore code blocks and inline code
+    for (const { token, value } of codePlaceholders) {
+        processed = processed.replace(token, () => value);
+    }
+
+    return processed;
+}
+
 /**
  * Handle incomplete Markdown code fences during streaming.
  */
@@ -271,10 +485,12 @@ function renderMarkdown(content) {
 
     if (!marked) {
         // Fallback if marked is unavailable
-        return `<p>${escapeHtml(content)}</p>`;
+        const mathProcessed = renderLatexMath(content);
+        return `<p>${escapeHtml(mathProcessed)}</p>`;
     }
 
     const safeContent = completeStreamMarkdown(content);
+    const mathContent = renderLatexMath(safeContent);
 
     try {
         const renderer = new marked.Renderer();
@@ -289,7 +505,7 @@ function renderMarkdown(content) {
             return `<a href="${escapeHtml(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
         };
 
-        const parsedHtml = marked.parse(safeContent, {
+        const parsedHtml = marked.parse(mathContent, {
             renderer: renderer,
             breaks: true,
             gfm: true,
@@ -348,4 +564,14 @@ async function handleCodeCopyClick(event) {
     return true;
 }
 
-export { renderMarkdown, handleCodeCopyClick, escapeHtml, resolveLanguage, formatLanguageName, sanitizeHtml, completeStreamMarkdown };
+export {
+    renderMarkdown,
+    handleCodeCopyClick,
+    escapeHtml,
+    resolveLanguage,
+    formatLanguageName,
+    sanitizeHtml,
+    completeStreamMarkdown,
+    renderLatexMath,
+    convertLatexExpression,
+};
