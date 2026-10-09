@@ -6,23 +6,26 @@
         <style>
             :root {
                 /* Backgrounds */
-                --bg-app: #0a0a0a;
-                --bg-surface: #111111;
-                --bg-elevated: #191919;
-                --bg-hover: #1f1f1f;
+                --bg-app: #102c30;
+                --bg-surface: #1a363a;
+                --bg-elevated: #264246;
+                --bg-hover: #2c484c;
 
                 /* Text */
-                --text-primary: #f5f5f5;
-                --text-secondary: #999999;
-                --text-muted: #555555;
+                --text-primary: #f0fbf9;
+                --text-secondary: #bdd8d3;
+                --text-muted: #89aba9;
 
                 /* Borders & Lines */
-                --border: #222222;
-                --border-strong: #333333;
+                --border: #31565a;
+                --border-strong: #80e0d5;
 
                 /* Accent */
-                --accent: #3b82f6;
-                --accent-hover: #2563eb;
+                --accent: #80e0d5;
+                --accent-hover: #9af0e6;
+                --accent-rgb: 128, 224, 213;
+                --bubble-user-bg: #ddf8f3;
+                --bubble-user-text: #153b3e;
 
                 /* Status */
                 --success: #22c55e;
@@ -87,10 +90,10 @@
                 --focus-box-shadow: transparent;
                 --scrollbar-track: var(--bg-app);
                 --scrollbar-thumb: var(--border-strong);
-                --scrollbar-thumb-hover: #444444;
+                --scrollbar-thumb-hover: var(--text-muted);
                 --scrollbar-background: var(--bg-app);
                 --start-button-background: var(--accent);
-                --start-button-color: #ffffff;
+                --start-button-color: #102c30;
                 --start-button-border: var(--accent);
                 --start-button-hover-background: var(--accent-hover);
                 --start-button-hover-border: var(--accent-hover);
@@ -174,7 +177,7 @@
             }
 
             ::-webkit-scrollbar-thumb:hover {
-                background: #444444;
+                background: var(--scrollbar-thumb-hover);
             }
 
             preechak-ai-app {

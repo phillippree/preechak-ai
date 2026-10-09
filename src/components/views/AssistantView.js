@@ -28,8 +28,8 @@ export class AssistantView extends LitElement {
             }
 
             .bubble-user.typing-bubble {
-                background: #ffffff;
-                color: #111827;
+                background: var(--bubble-user-bg, #ffffff);
+                color: var(--bubble-user-text, #111827);
                 border-radius: 18px 18px 4px 18px;
                 padding: 8px 14px;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
@@ -88,7 +88,7 @@ export class AssistantView extends LitElement {
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
-                background: #2563eb;
+                background: var(--accent);
                 display: inline-block;
                 animation: typingWave 1.4s infinite ease-in-out both;
             }
@@ -314,8 +314,8 @@ export class AssistantView extends LitElement {
             }
 
             .bubble-user {
-                background: #ffffff;
-                color: #111827;
+                background: var(--bubble-user-bg, #ffffff);
+                color: var(--bubble-user-text, #111827);
                 border-radius: 18px 18px 4px 18px;
                 padding: 10px 16px;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);

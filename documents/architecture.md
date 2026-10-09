@@ -24,6 +24,7 @@ flowchart TD
     Save --> Storage["storage.js<br/>History JSON and settings"]
     Router -->|"Save screenshot files"| Storage
     Storage <-->|"Read saved sessions through IPC"| History["HistoryView.js"]
+    Main --> AppLogs["appLogger.js<br/>Capture stdout and stderr with 5 MB rotation"]
 ```
 
 ## Modular Pipeline & Profile Architecture
@@ -85,11 +86,13 @@ Paths below are relative to the repository root.
 | `src/utils/native-ai-runtime.js`        | Native runner/model downloads and local server support                              |
 | `src/utils/prompts.js`                  | Profile-specific AI instructions                                                    |
 | `src/storage.js`                        | JSON settings, credentials, sessions, and screenshot files                          |
+| `src/utils/appLogger.js`                | Tee stdout and stderr to rotating files under the Electron user data directory       |
 
 ## Implementation notes
 
 - `gemini.js` is the central AI controller, including routing to local AI, despite its name.
 - On macOS, history lives outside the project directory under `~/Library/Application Support/preechak-ai-config`.
+- App stdout and stderr are also saved separately in the Electron user data `logs/` folder (`stdout.log` and `stderr.log`); each stream rolls over at 5 MB.
 - Local AI runs separate background programs for Whisper and llama.cpp.
 - `cloud.js` still exists, but its setup option is disabled in the current interface.
 - Some comments mention IndexedDB, but the current history-saving path writes JSON files through `storage.js`.

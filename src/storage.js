@@ -83,6 +83,7 @@ const DEFAULT_PREFERENCES = {
     geminiHttpLocalWhisper: false,
     geminiHttpTranscriptionMode: 'whisper',
     vadEnergyThreshold: 95,
+    theme: 'deepteal',
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults

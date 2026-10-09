@@ -3,6 +3,11 @@ if (require('electron-squirrel-startup')) {
 }
 
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const path = require('node:path');
+const { startStreamLogging } = require('./utils/appLogger');
+
+startStreamLogging({ logsDirectory: path.join(app.getPath('userData'), 'logs') });
+
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');

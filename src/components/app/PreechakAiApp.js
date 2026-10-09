@@ -1127,6 +1127,7 @@ export class PreechakAiApp extends LitElement {
                     )}
                 </nav>
                 <div class="sidebar-footer">
+                    ${this._localVersion ? html`<div class="version-text">v${this._localVersion}</div>` : ''}
                     ${
                         this._updateAvailable
                             ? html`
@@ -1144,7 +1145,7 @@ export class PreechakAiApp extends LitElement {
                                       Update available
                                   </button>
                               `
-                            : html` <div class="version-text">v${this._localVersion}</div> `
+                            : ''
                     }
                 </div>
             </div>

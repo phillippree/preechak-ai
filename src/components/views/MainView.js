@@ -480,16 +480,15 @@ export class MainView extends LitElement {
         }
 
         .btn-action-sm.primary {
-            background: #e8e8e8;
-            border-color: #e8e8e8;
-            color: #111111;
+            background: var(--btn-primary-bg, var(--accent));
+            border-color: var(--btn-primary-bg, var(--accent));
+            color: var(--btn-primary-text, #102c30);
             font-weight: var(--font-weight-semibold);
         }
 
         .btn-action-sm.primary:hover:not(:disabled) {
-            background: #ffffff;
-            border-color: #ffffff;
-            color: #000000;
+            background: var(--btn-primary-hover, var(--accent-hover));
+            border-color: var(--btn-primary-hover, var(--accent-hover));
         }
 
         .btn-action-sm.danger {
@@ -520,8 +519,8 @@ export class MainView extends LitElement {
         .start-button {
             position: relative;
             overflow: hidden;
-            background: #e8e8e8;
-            color: #111111;
+            background: var(--start-button-background, var(--accent));
+            color: var(--start-button-color, #102c30);
             border: none;
             padding: 12px var(--space-md);
             border-radius: var(--radius-sm);
@@ -897,8 +896,8 @@ export class MainView extends LitElement {
         }
 
         .help-cloud-btn {
-            background: #e8e8e8;
-            color: #111111;
+            background: var(--btn-primary-bg, var(--accent));
+            color: var(--btn-primary-text, #102c30);
             border: none;
             padding: 10px var(--space-md);
             border-radius: var(--radius-sm);
@@ -1159,7 +1158,7 @@ export class MainView extends LitElement {
             const h = aurora.height;
             const maxDim = Math.max(w, h);
 
-            ctx.fillStyle = '#f0f0f0';
+            ctx.fillStyle = getComputedStyle(btn).getPropertyValue('--start-button-background').trim() || '#f0f0f0';
             ctx.fillRect(0, 0, w, h);
 
             const hovering = this._mouseX >= 0;

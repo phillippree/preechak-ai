@@ -1019,7 +1019,7 @@ ipcRenderer.on('change-opacity', async (_, delta) => {
         let currentAlpha = prefs.backgroundTransparency ?? 0.8;
         let newAlpha = Math.round(Math.min(1.0, Math.max(0.1, currentAlpha + delta)) * 10) / 10;
         await storage.updatePreference('backgroundTransparency', newAlpha);
-        const colors = theme.get(theme.current || 'dark');
+        const colors = theme.get(theme.current || 'deepteal');
         theme.applyBackgrounds(colors.background, newAlpha);
         window.dispatchEvent(new CustomEvent('opacity-changed', { detail: { opacity: newAlpha } }));
     } catch (err) {
@@ -1053,7 +1053,23 @@ const preechakAiApp = document.querySelector('preechak-ai-app');
 // ============ THEME SYSTEM ============
 const theme = {
     themes: {
-        dark: {
+        deepteal: {
+            background: '#102c30',
+            text: '#f0fbf9',
+            textSecondary: '#bdd8d3',
+            textMuted: '#89aba9',
+            border: '#31565a',
+            accent: '#80e0d5',
+            btnPrimaryBg: '#80e0d5',
+            btnPrimaryText: '#102c30',
+            btnPrimaryHover: '#9af0e6',
+            tooltipBg: '#1d4145',
+            tooltipText: '#f0fbf9',
+            keyBg: 'rgba(128,224,213,0.16)',
+            bubbleUserBg: '#ddf8f3',
+            bubbleUserText: '#153b3e',
+        },
+        charcoal: {
             background: '#101010',
             text: '#e0e0e0',
             textSecondary: '#a0a0a0',
@@ -1181,15 +1197,21 @@ const theme = {
         },
     },
 
-    current: 'dark',
+    current: 'deepteal',
+
+    normalize(name) {
+        if (name === 'dark') return 'deepteal';
+        return this.themes[name] ? name : 'deepteal';
+    },
 
     get(name) {
-        return this.themes[name] || this.themes.dark;
+        return this.themes[this.normalize(name)];
     },
 
     getAll() {
         const names = {
-            dark: 'Dark',
+            deepteal: 'Deep Teal',
+            charcoal: 'Charcoal',
             light: 'Light',
             midnight: 'Midnight Blue',
             sepia: 'Sepia',
@@ -1270,7 +1292,7 @@ const theme = {
 
     apply(themeName, alpha = 0.8) {
         const colors = this.get(themeName);
-        this.current = themeName;
+        this.current = this.normalize(themeName);
         const root = document.documentElement;
 
         // New design tokens (used by components)
@@ -1281,6 +1303,10 @@ const theme = {
         root.style.setProperty('--border-strong', colors.accent);
         root.style.setProperty('--accent', colors.btnPrimaryBg);
         root.style.setProperty('--accent-hover', colors.btnPrimaryHover);
+        const accentRgb = this.hexToRgb(colors.btnPrimaryBg);
+        root.style.setProperty('--accent-rgb', `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`);
+        root.style.setProperty('--bubble-user-bg', colors.bubbleUserBg || '#ffffff');
+        root.style.setProperty('--bubble-user-text', colors.bubbleUserText || '#111827');
 
         // Legacy aliases
         root.style.setProperty('--text-color', colors.text);
@@ -1312,19 +1338,21 @@ const theme = {
     async load() {
         try {
             const prefs = await storage.getPreferences();
-            const themeName = prefs.theme || 'dark';
+            const themeName = this.normalize(prefs.theme);
             const alpha = prefs.backgroundTransparency ?? 0.8;
             this.apply(themeName, alpha);
+            if (prefs.theme !== themeName) await storage.updatePreference('theme', themeName);
             return themeName;
         } catch (err) {
-            this.apply('dark');
-            return 'dark';
+            this.apply('deepteal');
+            return 'deepteal';
         }
     },
 
     async save(themeName) {
-        await storage.updatePreference('theme', themeName);
-        this.apply(themeName);
+        const normalizedName = this.normalize(themeName);
+        await storage.updatePreference('theme', normalizedName);
+        this.apply(normalizedName);
     },
 };
 

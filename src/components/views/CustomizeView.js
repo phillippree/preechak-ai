@@ -260,7 +260,7 @@ export class CustomizeView extends LitElement {
         this.customPrompt = '';
         this.manualScreenshotPrompt = DEFAULT_SCREENSHOT_PROMPTS.interview;
         this.screenshotPrompts = { ...DEFAULT_SCREENSHOT_PROMPTS };
-        this.theme = 'dark';
+        this.theme = 'deepteal';
         this._loadFromStorage();
     }
 
@@ -284,7 +284,7 @@ export class CustomizeView extends LitElement {
             this.audioInputDevice = prefs.audioInputDevice || 'default';
             this.vadEnergyThreshold = prefs.vadEnergyThreshold ?? 95;
             this.customPrompt = prefs.customPrompt ?? '';
-            this.theme = prefs.theme ?? 'dark';
+            this.theme = preechakAi.theme.normalize(prefs.theme);
             if (keybinds) {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...keybinds };
             }
@@ -671,7 +671,7 @@ export class CustomizeView extends LitElement {
                 googleSearchEnabled: false,
                 manualScreenshotPrompt: DEFAULT_SCREENSHOT_PROMPTS.interview,
                 screenshotPrompts: { ...DEFAULT_SCREENSHOT_PROMPTS },
-                theme: 'dark',
+                theme: 'deepteal',
             };
             for (const [key, value] of Object.entries(defaults)) {
                 await preechakAi.storage.updatePreference(key, value);
