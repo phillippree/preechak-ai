@@ -8,6 +8,7 @@
         "start": "electron-forge start",
         "package": "electron-forge package",
         "make": "electron-forge make",
+        "package:mac": "ELECTRON_FORGE_OUT_DIR=release electron-forge make --platform=darwin && mkdir -p release && cp release/make/*.dmg release/",
         "publish": "electron-forge publish",
         "lint": "echo \"No linting configured\""
     },

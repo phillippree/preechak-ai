@@ -91,6 +91,7 @@ typings/
 
 # Electron-Forge
 out/
+release/
 .specstory
 .specstory/
 
