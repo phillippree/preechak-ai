@@ -322,3 +322,32 @@ npm run make    # Build platform distributables
 Build output goes under `out/`. Both `out/` and `node_modules/` are ignored by Git; keep `package.json` and `package-lock.json` tracked.
 
 Run the focused HTTP audio regression tests with `node --test tests/gemini-http.test.cjs`. These mock the provider and cover transcript display/storage, conversation context, queued speech, empty transcripts, failures, and session restarts. There is no typecheck script; `npm run lint` only prints a placeholder message.
+
+### Versioning and releases
+
+Commit your changes and complete validation before bumping the version. The working directory must be clean. Choose one command:
+
+```bash
+npm version patch -m "chore: release v%s" # Bug fixes: 0.2.0 → 0.2.1
+npm version minor -m "chore: release v%s" # Features: 0.2.1 → 0.3.0
+npm version major -m "chore: release v%s" # Major release: 0.3.0 → 1.0.0
+```
+
+Each command updates `package.json` and `package-lock.json`, creates a release commit, and adds a Git tag such as `v0.2.1`. The UI reads this version automatically; restart the development app to see it.
+
+Build the macOS installer with the updated version:
+
+```bash
+npm run package:mac
+```
+
+This writes build output and a copy of the DMG to `release/`. An installed app shows the new version after you replace it with the new build.
+
+When ready to publish the release commit and its tag, use the actual tag created by your version bump:
+
+```bash
+git push
+git push origin v0.2.1
+```
+
+Pushing the tag does not upload the DMG; distribute the installer separately. See [App versioning](documents/versioning.md) for how the version reaches the UI.
