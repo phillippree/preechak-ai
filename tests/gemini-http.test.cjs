@@ -30,6 +30,7 @@ function harness({
             if (name === 'node:fs' || name === 'fs') return effectiveFs;
             if (name === 'node:path' || name === 'path') return path;
             if (name === './llmRequestLogger') return { logLlmRequest: (_, payload) => payload };
+            if (name === './speech-segmenter') return require('../src/utils/speech-segmenter');
             if (name === './whisper-runtime')
                 return {
                     startWhisperServer: mockWhisper?.startWhisperServer || (async () => 'http://127.0.0.1:8080'),
@@ -697,7 +698,7 @@ test('storage DEFAULT_PREFERENCES defaults vadEnergyThreshold to 95', () => {
     assert.equal(storage.DEFAULT_PREFERENCES.vadEnergyThreshold, 95, 'Default VAD energy threshold must be 95');
 });
 
-test('VAD ignores low-energy background noise below threshold and starts speech when energy exceeds threshold', async () => {
+test('speech gate ignores quiet noise and opens after sustained voice-like audio', async () => {
     const h = harness();
     await h.api.initializeGeminiHttpSession('test');
 
@@ -716,14 +717,14 @@ test('VAD ignores low-energy background noise below threshold and starts speech 
 
     assert.ok(!h.events.some(e => e[0] === 'update-status' && String(e[1]).includes('speech detected')), 'Low energy must not trigger speech');
 
-    // Generate high-energy chunk (amplitude 3000, energy 3000 > 95)
+    // An alternating waveform has speech-band activity; a fixed DC level does not.
     const highEnergyChunk = Buffer.alloc(4800);
-    const highSampleVal = 3000;
     for (let i = 0; i < highEnergyChunk.length; i += 2) {
-        highEnergyChunk.writeInt16LE(highSampleVal, i);
+        highEnergyChunk.writeInt16LE(Math.round(3000 * Math.sin((2 * Math.PI * 220 * i) / 48000)), i);
     }
 
-    // Feed 2 high energy chunks (SPEECH_FRAMES_REQUIRED = 2)
+    // Three consecutive chunks are required to open a segment.
+    h.api.processHttpAudioChunk(highEnergyChunk, 'Interviewer');
     h.api.processHttpAudioChunk(highEnergyChunk, 'Interviewer');
     h.api.processHttpAudioChunk(highEnergyChunk, 'Interviewer');
     await settle();
@@ -732,4 +733,24 @@ test('VAD ignores low-energy background noise below threshold and starts speech 
         h.events.some(e => e[0] === 'update-status' && String(e[1]).includes('speech detected')),
         'High energy must trigger speech detected status'
     );
+});
+
+test('mic and system speech buffers close independently with their own labels', async () => {
+    const h = harness();
+    await h.api.initializeGeminiHttpSession('test');
+    const speech = Buffer.alloc(4800);
+    for (let i = 0; i < 2400; i++) speech.writeInt16LE(Math.round(3000 * Math.sin((2 * Math.PI * 220 * i) / 24000)), i * 2);
+    const silence = Buffer.alloc(4800);
+    for (let i = 0; i < 5; i++) {
+        h.api.processHttpAudioChunk(speech, 'You');
+        h.api.processHttpAudioChunk(speech, 'Interviewer');
+    }
+    for (let i = 0; i < 10; i++) h.api.processHttpAudioChunk(silence, 'You');
+    await settle();
+    assert.equal(h.saved.length, 1);
+    assert.match(h.saved[0][0], /^\[You\]:/);
+    for (let i = 0; i < 10; i++) h.api.processHttpAudioChunk(silence, 'Interviewer');
+    await settle();
+    assert.equal(h.saved.length, 2);
+    assert.match(h.saved[1][0], /^\[Interviewer\]:/);
 });

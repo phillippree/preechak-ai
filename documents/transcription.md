@@ -47,20 +47,22 @@ On macOS, system audio comes from the SystemAudioDump helper. Microphone audio c
 The HTTP pipeline operates on completed speech segments, not continuously updated word-by-word transcripts.
 
 1. `processHttpAudioChunk()` receives audio chunks, normally representing about 100 ms each.
-2. It measures audio energy and detects speech. The configurable energy threshold is clamped to the range defined in the code.
-3. It accumulates speech until a profile-dependent silence threshold or the maximum chunk count is reached.
+2. A separate segmenter for microphone and system audio measures chunk RMS, an adaptive background level, waveform crossings, and impulse peakiness. It requires about 300 ms of consecutive candidate audio before declaring speech. This is a local signal heuristic, not a trained speech classifier; music or other voices can still pass.
+3. Each segmenter retains up to 500 ms of recent audio so the beginning of speech is not clipped. It accumulates speech until a profile-dependent pause or a 15-second segment limit is reached. A segment needs at least 400 ms of speech candidates before transcription.
 4. At that segment boundary, it snapshots the active screenshot attachment IDs.
 5. Segments shorter than 0.4 seconds are skipped. If another speech turn is processing, the segment and its attachment IDs enter the pending queue.
 6. The chosen engine transcribes the audio.
 7. Empty transcripts are skipped. A nonempty transcript is displayed with its speaker label and used for the answer request.
 8. Session-generation checks prevent obsolete results from updating a restarted session.
 
-The current limits and pause calculations assume the expected chunk cadence. Energy detection is a simple volume-based heuristic, not a separate learned speech-detection model. Source labels such as “You” and “Interviewer” are app routing labels, not identity recognition by Whisper.
+The current limits and pause calculations assume the expected 100 ms chunk cadence. The signal gate rejects silence, steady low-level background sound, and short impulses, but it is not a learned speech-detection model. Source labels such as “You” and “Interviewer” are app routing labels, not identity recognition by Whisper. Segmenters and their adaptive noise levels are reset when a session closes or restarts. Raw audio is not saved by this gate.
+
+Set `DEBUG_AUDIO=1` when starting the app to log each source's chunk RMS, estimated noise floor, speech-candidate decision, and completed HTTP segment duration. These diagnostics contain numeric levels and labels, not raw samples. The existing `vadEnergyThreshold` preference remains the minimum RMS gate (clamped to 50–200) for HTTP sessions. Local AI uses the default minimum of 95.
 
 ```mermaid
 flowchart TD
-    A["24 kHz audio chunks"] --> B["Energy-based speech detection"]
-    B --> C["Buffer until pause or segment limit"]
+    A["Separate 24 kHz mic and system chunks"] --> B["Per-source signal gate"]
+    B --> C["Lead-in buffer → speech buffer until pause or segment limit"]
     C --> D["Snapshot selected image IDs"]
     D --> E["Queue segment if busy"]
     E --> F{"Transcription engine"}
@@ -198,7 +200,7 @@ Only selected/downloaded models need to exist. Source builds temporarily use `<c
 
 ## Relationship to full Local AI mode
 
-Full Local AI still uses `localai.js` and `native-ai-runtime.js` to prepare and start both Whisper and llama.cpp. Its audio detection and history handling are separate from the Gemini HTTP implementation.
+Full Local AI still uses `localai.js` and `native-ai-runtime.js` to prepare and start both Whisper and llama.cpp. It now shares the signal-gate implementation with Gemini HTTP but has independent per-source segmenters and separate history handling.
 
 Do not assume changing the HTTP Whisper installer also changes the combined Local AI installer. The latter retains its own native-runner release configuration. In full Local AI mode, the transcript goes to llama.cpp; in HTTP-plus-Whisper mode, it goes to the remote answer pipeline.
 
@@ -210,6 +212,7 @@ Do not assume changing the HTTP Whisper installer also changes the combined Loca
 | `src/storage.js`                   | Default preferences, saved settings, and history files                                             |
 | `src/utils/renderer.js`            | Capture and renderer/background messages                                                           |
 | `src/utils/gemini.js`              | Route audio into Live, HTTP, or Local AI paths                                                     |
+| `src/utils/speech-segmenter.js`    | Local per-source signal gate, lead-in buffering, and speech segment boundaries                     |
 | `src/utils/gemini-http.js`         | HTTP speech buffering, queues, engine selection, transcript display, and answer context            |
 | `src/utils/whisper-runtime.js`     | Standalone Whisper build/download/status, server lifecycle, resampling, and transcription requests |
 | `src/utils/localai.js`             | Combined local Whisper + llama.cpp session                                                         |

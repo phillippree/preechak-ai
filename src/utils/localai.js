@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { getSystemPrompt } = require('./prompts');
 const { sendToRenderer, initializeNewSession, saveConversationTurn, saveScreenAnalysis } = require('./gemini');
+const { createSpeechSegmenter } = require('./speech-segmenter');
 const {
     ensureNativeBinary,
     ensureLlamaModel,
@@ -25,19 +26,7 @@ let isLocalActive = false;
 let initializationController = null;
 let llamaCacheSnapshot = new Set();
 
-let isSpeaking = false;
-let speechBuffers = [];
-let silenceFrameCount = 0;
-let speechFrameCount = 0;
-
-const VAD_MODES = {
-    NORMAL: { energyThreshold: 0.01, speechFramesRequired: 3, silenceFramesRequired: 30 },
-    LOW_BITRATE: { energyThreshold: 0.008, speechFramesRequired: 4, silenceFramesRequired: 35 },
-    AGGRESSIVE: { energyThreshold: 0.015, speechFramesRequired: 2, silenceFramesRequired: 20 },
-    VERY_AGGRESSIVE: { energyThreshold: 0.02, speechFramesRequired: 2, silenceFramesRequired: 15 },
-};
-
-let vadConfig = VAD_MODES.VERY_AGGRESSIVE;
+const audioSegmenters = new Map();
 let resampleRemainder = Buffer.alloc(0);
 
 function resample24kTo16k(inputBuffer) {
@@ -61,53 +50,6 @@ function resample24kTo16k(inputBuffer) {
     resampleRemainder = remainderStart < combined.length ? combined.slice(remainderStart) : Buffer.alloc(0);
 
     return outputBuffer;
-}
-
-function calculateRms(pcm16Buffer) {
-    const samples = pcm16Buffer.length / 2;
-    if (samples === 0) return 0;
-
-    let sumSquares = 0;
-    for (let i = 0; i < samples; i++) {
-        const sample = pcm16Buffer.readInt16LE(i * 2) / 32768;
-        sumSquares += sample * sample;
-    }
-
-    return Math.sqrt(sumSquares / samples);
-}
-
-function processVad(pcm16kBuffer) {
-    const rms = calculateRms(pcm16kBuffer);
-    const isVoice = rms > vadConfig.energyThreshold;
-
-    if (isVoice) {
-        speechFrameCount += 1;
-        silenceFrameCount = 0;
-
-        if (!isSpeaking && speechFrameCount >= vadConfig.speechFramesRequired) {
-            isSpeaking = true;
-            speechBuffers = [];
-            console.log('[LocalAI] Speech started (RMS:', rms.toFixed(4), ')');
-            sendToRenderer('update-status', 'Listening... (speech detected)');
-        }
-    } else {
-        silenceFrameCount += 1;
-        speechFrameCount = 0;
-
-        if (isSpeaking && silenceFrameCount >= vadConfig.silenceFramesRequired) {
-            isSpeaking = false;
-            const audioData = Buffer.concat(speechBuffers);
-            speechBuffers = [];
-            console.log('[LocalAI] Speech ended, accumulated', audioData.length, 'bytes');
-            sendToRenderer('update-status', 'Transcribing...');
-            handleSpeechEnd(audioData);
-            return;
-        }
-    }
-
-    if (isSpeaking) {
-        speechBuffers.push(Buffer.from(pcm16kBuffer));
-    }
 }
 
 function createWavBuffer(pcm16Buffer) {
@@ -451,10 +393,7 @@ async function initializeLocalSession(model, whisperModel, profile, customPrompt
         sendDownloadProgress('Loading language model');
         await startLlamaServer(nativeFiles.llamaBinaryPath, nativeFiles.llamaModelPath, nativeFiles.projectorPath);
 
-        isSpeaking = false;
-        speechBuffers = [];
-        silenceFrameCount = 0;
-        speechFrameCount = 0;
+        audioSegmenters.clear();
         resampleRemainder = Buffer.alloc(0);
         localConversationHistory = [];
 
@@ -484,13 +423,28 @@ async function initializeLocalSession(model, whisperModel, profile, customPrompt
     }
 }
 
-function processLocalAudio(monoChunk24k) {
+function processLocalAudio(monoChunk24k, speaker = 'Interviewer') {
     if (!isLocalActive) return;
-
-    const pcm16k = resample24kTo16k(monoChunk24k);
-    if (pcm16k.length > 0) {
-        processVad(pcm16k);
+    const source = speaker === 'You' ? 'You' : 'Interviewer';
+    let segmenter = audioSegmenters.get(source);
+    if (!segmenter) {
+        segmenter = createSpeechSegmenter({
+            pauseMs: 1500,
+            onSpeechStart: () => sendToRenderer('update-status', 'Listening... (speech detected)'),
+            onSegment: pcm24k => {
+                resampleRemainder = Buffer.alloc(0);
+                const pcm16k = resample24kTo16k(pcm24k);
+                sendToRenderer('update-status', 'Transcribing...');
+                void handleSpeechEnd(pcm16k);
+            },
+        });
+        audioSegmenters.set(source, segmenter);
     }
+    const diagnostic = segmenter.push(monoChunk24k);
+    if (diagnostic && process.env.DEBUG_AUDIO)
+        console.log(
+            `[LocalAI] ${source} chunk: RMS ${diagnostic.rms.toFixed(0)}, floor ${diagnostic.noiseFloor.toFixed(0)}, candidate ${diagnostic.speechCandidate}`
+        );
 }
 
 function closeLocalSession() {
@@ -504,10 +458,7 @@ function closeLocalSession() {
     llamaBaseUrl = null;
     whisperBaseUrl = null;
     llamaModel = null;
-    isSpeaking = false;
-    speechBuffers = [];
-    silenceFrameCount = 0;
-    speechFrameCount = 0;
+    audioSegmenters.clear();
     resampleRemainder = Buffer.alloc(0);
     localConversationHistory = [];
     currentSystemPrompt = null;

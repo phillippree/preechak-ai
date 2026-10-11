@@ -43,6 +43,7 @@ function createGeminiHttpHarness() {
                     getPreferences: () => ({}),
                 };
             if (name === './prompts') return { getSystemPrompt, profilePrompts };
+            if (name === './speech-segmenter') return require('../src/utils/speech-segmenter');
             if (name === './gemini')
                 return {
                     sendToRenderer: (...args) => events.push(args),

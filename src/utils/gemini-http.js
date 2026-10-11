@@ -14,6 +14,7 @@ const {
     getProfileSpeakerSilencePause,
 } = require('./gemini');
 const whisperRuntime = require('./whisper-runtime');
+const { createSpeechSegmenter } = require('./speech-segmenter');
 
 let httpSessionActive = false;
 let useLocalWhisper = false;
@@ -33,12 +34,8 @@ let runningSummary = '';
 let summarizedUpToIndex = 0;
 let isSummarizing = false;
 
-// Audio buffering and VAD state
-let isSpeaking = false;
-let audioChunks = [];
-let silenceFrames = 0;
-let speechFrames = 0;
-let activeSpeakerLabel = 'Interviewer';
+// Independent mic and system audio segmentation state.
+const audioSegmenters = new Map();
 
 // Screenshot and attachment state
 let sessionScreenshots = []; // [{ id, timestamp, path, mimeType }]
@@ -46,10 +43,6 @@ let activeAttachments = []; // [id1, id2] - max 2
 const imageCache = new Map(); // id -> base64Data (bounded in-memory cache)
 const MAX_IMAGE_CACHE_ENTRIES = 10;
 const ESTIMATED_IMAGE_TOKENS = 258; // Standard empirical tokens per image tile in Gemini
-
-const ENERGY_THRESHOLD = 95;
-const SPEECH_FRAMES_REQUIRED = 2; // ~200ms of audio over threshold
-const MAX_ACCUMULATED_CHUNKS = 150; // max ~15 seconds of audio before forcing a turn
 
 const DEFAULT_RECENT_HISTORY_TOKEN_BUDGET = 4000;
 const DEFAULT_SUMMARY_TARGET_TOKENS = 500;
@@ -72,17 +65,6 @@ function estimateTurnTokens(turn) {
         tokens += turn.imageIds.length * ESTIMATED_IMAGE_TOKENS;
     }
     return tokens;
-}
-
-function getPcmEnergy(buffer) {
-    if (!buffer || buffer.length < 2) return 0;
-    let sum = 0;
-    const numSamples = Math.floor(buffer.length / 2);
-    for (let i = 0; i < buffer.length - 1; i += 2) {
-        const sample = buffer.readInt16LE(i);
-        sum += sample * sample;
-    }
-    return Math.sqrt(sum / numSamples);
 }
 
 function createWavBuffer(pcmBuffer, sampleRate = 24000, channels = 1, bitDepth = 16) {
@@ -274,10 +256,7 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
     summarizedUpToIndex = 0;
     isSummarizing = false;
     isProcessingTurn = false;
-    isSpeaking = false;
-    audioChunks = [];
-    silenceFrames = 0;
-    speechFrames = 0;
+    audioSegmenters.clear();
     sessionScreenshots = [];
     activeAttachments = [];
     imageCache.clear();
@@ -338,10 +317,7 @@ function closeGeminiHttpSession() {
     pendingSpeech = [];
     httpSessionActive = false;
     isProcessingTurn = false;
-    isSpeaking = false;
-    audioChunks = [];
-    silenceFrames = 0;
-    speechFrames = 0;
+    audioSegmenters.clear();
     httpConversationHistory = [];
     runningSummary = '';
     summarizedUpToIndex = 0;
@@ -561,68 +537,31 @@ function processHttpAudioChunk(pcmBuffer, speaker = 'Interviewer') {
     if (!httpSessionActive || !pcmBuffer || pcmBuffer.length === 0 || transcriptionMode === 'none') {
         return;
     }
-
-    const energy = getPcmEnergy(pcmBuffer);
-    activeSpeakerLabel = speaker || activeSpeakerLabel || 'Interviewer';
-
-    let currentEnergyThreshold = ENERGY_THRESHOLD;
-    try {
-        const prefs = getPreferences() || {};
-        if (typeof prefs.vadEnergyThreshold === 'number' && !isNaN(prefs.vadEnergyThreshold)) {
-            currentEnergyThreshold = Math.max(50, Math.min(200, prefs.vadEnergyThreshold));
-        }
-    } catch {}
-
-    if (energy > currentEnergyThreshold) {
-        speechFrames++;
-        silenceFrames = 0;
-
-        if (!isSpeaking && speechFrames >= SPEECH_FRAMES_REQUIRED) {
-            isSpeaking = true;
-            console.log(`[Gemini HTTP] Speech started (${speaker}, energy: ${energy.toFixed(1)})`);
-            sendToRenderer('update-status', 'Listening... (speech detected)');
-        }
-    } else {
-        silenceFrames++;
-        speechFrames = 0;
-
-        const pauseMs = getProfileSpeakerSilencePause ? getProfileSpeakerSilencePause(sessionProfile) : 1000;
-        const requiredSilenceFrames = Math.max(6, Math.floor(pauseMs / 100)); // e.g. 10 frames = 1.0s
-
-        if (isSpeaking && silenceFrames >= requiredSilenceFrames) {
-            isSpeaking = false;
-            silenceFrames = 0;
-            speechFrames = 0;
-
-            if (audioChunks.length > 0) {
-                const combined = Buffer.concat(audioChunks);
-                audioChunks = [];
-                // Snapshot active attachments at segment creation boundary
-                const attachmentSnapshot = [...activeAttachments];
-                console.log(
-                    `[Gemini HTTP] Speech ended (${combined.length} bytes, attachments: ${attachmentSnapshot.join(',') || 'none'}). Processing turn...`
-                );
-                handleSpeechSegment(combined, activeSpeakerLabel, attachmentSnapshot);
-                return;
-            }
-        }
+    const source = speaker === 'You' ? 'You' : 'Interviewer';
+    let segmenter = audioSegmenters.get(source);
+    if (!segmenter) {
+        const configuredThreshold = getPreferences()?.vadEnergyThreshold;
+        segmenter = createSpeechSegmenter({
+            minRms: Number.isFinite(configuredThreshold) ? Math.max(50, Math.min(200, configuredThreshold)) : 95,
+            pauseMs: getProfileSpeakerSilencePause(sessionProfile),
+            onSpeechStart: ({ rms, noiseFloor }) => {
+                if (typeof process !== 'undefined' && process.env.DEBUG_AUDIO)
+                    console.log(`[Gemini HTTP] ${source} speech: RMS ${rms.toFixed(0)}, floor ${noiseFloor.toFixed(0)}`);
+                sendToRenderer('update-status', 'Listening... (speech detected)');
+            },
+            onSegment: combined => {
+                if (typeof process !== 'undefined' && process.env.DEBUG_AUDIO)
+                    console.log(`[Gemini HTTP] ${source} segment: ${(combined.length / 48000).toFixed(1)}s`);
+                void handleSpeechSegment(combined, source, [...activeAttachments]);
+            },
+        });
+        audioSegmenters.set(source, segmenter);
     }
-
-    if (isSpeaking) {
-        audioChunks.push(Buffer.from(pcmBuffer));
-
-        // Safeguard for very long monologues
-        if (audioChunks.length >= MAX_ACCUMULATED_CHUNKS) {
-            isSpeaking = false;
-            silenceFrames = 0;
-            speechFrames = 0;
-            const combined = Buffer.concat(audioChunks);
-            audioChunks = [];
-            const attachmentSnapshot = [...activeAttachments];
-            console.log(`[Gemini HTTP] Max speech buffer reached (${combined.length} bytes). Processing turn...`);
-            handleSpeechSegment(combined, activeSpeakerLabel, attachmentSnapshot);
-        }
-    }
+    const diagnostic = segmenter.push(pcmBuffer);
+    if (diagnostic && typeof process !== 'undefined' && process.env.DEBUG_AUDIO)
+        console.log(
+            `[Gemini HTTP] ${source} chunk: RMS ${diagnostic.rms.toFixed(0)}, floor ${diagnostic.noiseFloor.toFixed(0)}, candidate ${diagnostic.speechCandidate}`
+        );
 }
 
 async function handleSpeechSegment(pcmBuffer, speaker = 'Interviewer', snapshottedAttachmentIds = null) {

@@ -1161,7 +1161,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
             if (currentProviderMode === 'cloud') {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
-                getLocalAi().processLocalAudio(monoChunk);
+                getLocalAi().processLocalAudio(monoChunk, 'Interviewer');
             } else if (currentProviderMode === 'byok_http') {
                 getGeminiHttp().processHttpAudioChunk(monoChunk, 'Interviewer');
             } else {
@@ -1419,7 +1419,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
         if (currentProviderMode === 'local') {
             try {
-                getLocalAi().processLocalAudio(pcmBuffer);
+                getLocalAi().processLocalAudio(pcmBuffer, 'Interviewer');
                 return { success: true };
             } catch (error) {
                 console.error('Error sending local audio:', error);
@@ -1506,7 +1506,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
         if (currentProviderMode === 'local') {
             try {
-                getLocalAi().processLocalAudio(pcmBuffer);
+                getLocalAi().processLocalAudio(pcmBuffer, 'You');
                 return { success: true };
             } catch (error) {
                 console.error('Error sending local mic audio:', error);
