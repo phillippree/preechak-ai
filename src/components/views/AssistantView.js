@@ -838,7 +838,7 @@ export class AssistantView extends LitElement {
                 padding: 0 24px 0 12px;
                 font-size: var(--font-size-xs);
                 font-family: var(--font-mono);
-                cursor: pointer;
+                cursor: default;
                 outline: none;
                 height: 32px;
                 box-sizing: border-box;
@@ -860,9 +860,40 @@ export class AssistantView extends LitElement {
                 border-color: var(--accent);
             }
 
-            .session-mode-pill option {
-                background: var(--bg-surface);
+            .session-mode-menu {
+                position: absolute;
+                bottom: calc(100% + 8px);
+                left: 0;
+                z-index: 100;
+                min-width: 180px;
+                max-height: min(300px, 60vh);
+                overflow-y: auto;
+                padding: 4px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: var(--bg-elevated);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            }
+
+            .session-mode-menu button {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                width: 100%;
+                padding: 8px;
+                border: none;
+                border-radius: 4px;
+                background: transparent;
                 color: var(--text-primary);
+                text-align: left;
+                cursor: default;
+            }
+
+            .session-mode-menu button span { width: 14px; }
+            .session-mode-menu button:hover,
+            .session-mode-menu button:focus-visible {
+                background: var(--bg-hover);
+                outline: 1px solid var(--accent);
             }
 
             .session-mode-pill-wrap::after {
@@ -1167,6 +1198,7 @@ export class AssistantView extends LitElement {
         hasNewMessagesWhileScrolled: { type: Boolean, state: true },
         attachmentsState: { type: Object, state: true },
         showHistoryPicker: { type: Boolean, state: true },
+        showModeMenu: { state: true },
     };
 
     constructor() {
@@ -1189,9 +1221,72 @@ export class AssistantView extends LitElement {
         this.hasNewMessagesWhileScrolled = false;
         this.attachmentsState = { activeAttachmentIds: [], activeAttachments: [], screenshots: [] };
         this.showHistoryPicker = false;
+        this.showModeMenu = false;
+    }
+
+    _modeOptions() {
+        return [
+            { value: 'interview', label: 'Interview' },
+            { value: 'meeting', label: 'Meeting' },
+            { value: 'sales', label: 'Sales Call' },
+            { value: 'presentation', label: 'Presentation' },
+            { value: 'negotiation', label: 'Negotiation' },
+            { value: 'exam', label: 'Exam' },
+            { value: 'designSystem', label: 'Design System' },
+        ];
+    }
+
+    async _openModeMenu(last = false) {
+        this.showModeMenu = true;
+        await this.updateComplete;
+        if (!this.showModeMenu) return;
+        const items = this.shadowRoot.querySelectorAll('[role="menuitemradio"]');
+        const selected = this._modeOptions().findIndex(option => option.value === this.selectedProfile);
+        items[last ? items.length - 1 : Math.max(0, selected)]?.focus();
+    }
+
+    _closeModeMenu(restoreFocus = false) {
+        this.showModeMenu = false;
+        if (restoreFocus) this.shadowRoot.querySelector('.session-mode-pill')?.focus();
+    }
+
+    _handleModeTriggerKeydown(event) {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            event.stopPropagation();
+            this._openModeMenu(event.key === 'ArrowUp');
+        }
+    }
+
+    _handleModeMenuKeydown(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            this._closeModeMenu(true);
+            return;
+        }
+        // Let Tab move focus normally; focusout then dismisses the menu.
+        const items = [...this.shadowRoot.querySelectorAll('[role="menuitemradio"]')];
+        const index = items.indexOf(this.shadowRoot.activeElement);
+        let next;
+        if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+        if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = items.length - 1;
+        if (next !== undefined) {
+            event.preventDefault();
+            event.stopPropagation();
+            items[next]?.focus();
+        }
+    }
+
+    _handleModeFocusOut(event) {
+        if (!event.currentTarget.contains(event.relatedTarget)) this._closeModeMenu();
     }
 
     _handleProfileSelect(newProfile) {
+        this._closeModeMenu(true);
+        if (newProfile === this.selectedProfile) return;
         this.selectedProfile = newProfile;
         if (typeof this.onProfileChange === 'function') {
             this.onProfileChange(newProfile);
@@ -1291,6 +1386,13 @@ export class AssistantView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
+        this._dismissModeMenu = event => {
+            const picker = this.shadowRoot.querySelector('.session-mode-pill-wrap');
+            if (this.showModeMenu && !event.composedPath().includes(picker)) this._closeModeMenu();
+        };
+        document.addEventListener('pointerdown', this._dismissModeMenu, true);
+        this._dismissModeMenuOnBlur = () => this._closeModeMenu();
+        window.addEventListener('blur', this._dismissModeMenuOnBlur);
 
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
@@ -1323,6 +1425,9 @@ export class AssistantView extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        document.removeEventListener('pointerdown', this._dismissModeMenu, true);
+        window.removeEventListener('blur', this._dismissModeMenuOnBlur);
+        this.showModeMenu = false;
         this._stopWaveformAnimation();
 
         if (window.require) {
@@ -1939,20 +2044,28 @@ export class AssistantView extends LitElement {
 
             <div class="input-bar">
                 <div class="session-mode-pill-wrap">
-                    <select
+                    <button
                         class="session-mode-pill"
-                        .value=${this.selectedProfile}
-                        @change=${e => this._handleProfileSelect(e.target.value)}
+                        type="button"
+                        aria-haspopup="menu"
+                        aria-expanded=${this.showModeMenu ? 'true' : 'false'}
+                        aria-controls="session-mode-menu"
+                        @click=${() => this.showModeMenu ? this._closeModeMenu() : this._openModeMenu()}
+                        @keydown=${this._handleModeTriggerKeydown}
                         title="Switch Session Mode"
-                    >
-                        <option value="interview" ?selected=${this.selectedProfile === 'interview'}>Interview</option>
-                        <option value="meeting" ?selected=${this.selectedProfile === 'meeting'}>Meeting</option>
-                        <option value="sales" ?selected=${this.selectedProfile === 'sales'}>Sales Call</option>
-                        <option value="presentation" ?selected=${this.selectedProfile === 'presentation'}>Presentation</option>
-                        <option value="negotiation" ?selected=${this.selectedProfile === 'negotiation'}>Negotiation</option>
-                        <option value="exam" ?selected=${this.selectedProfile === 'exam'}>Exam</option>
-                        <option value="designSystem" ?selected=${this.selectedProfile === 'designSystem'}>Design System</option>
-                    </select>
+                    >${this._modeOptions().find(option => option.value === this.selectedProfile)?.label || 'Mode'}</button>
+                    ${this.showModeMenu ? html`
+                        <div id="session-mode-menu" class="session-mode-menu" role="menu" aria-label="Session mode"
+                            @keydown=${this._handleModeMenuKeydown} @focusout=${this._handleModeFocusOut}>
+                            ${this._modeOptions().map(option => html`
+                                <button type="button" role="menuitemradio" tabindex="-1"
+                                    aria-checked=${option.value === this.selectedProfile ? 'true' : 'false'}
+                                    @click=${() => this._handleProfileSelect(option.value)}>
+                                    <span aria-hidden="true">${option.value === this.selectedProfile ? '✓' : ''}</span>${option.label}
+                                </button>
+                            `)}
+                        </div>
+                    ` : ''}
                 </div>
                 <div class="input-bar-inner">
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
