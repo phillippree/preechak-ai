@@ -194,11 +194,11 @@ The following capabilities are planned or in development and not part of the act
 
 ## Default hotkeys
 
-On macOS, **Option** is the key shown as `Alt` in the shortcut settings. Global shortcuts work while the app is running, subject to operating-system conflicts.
+On macOS, shortcuts use **Command** (`Cmd`). Global shortcuts work while the app is running, subject to operating-system conflicts.
 
 | Action                                                                     | macOS                 | Windows / Linux       |
 | -------------------------------------------------------------------------- | --------------------- | --------------------- |
-| Move window                                                                | `Option + Arrow keys` | `Ctrl + Arrow keys`   |
+| Move window                                                                | `Cmd + Arrow keys` | `Ctrl + Arrow keys`   |
 | Show / hide window                                                         | `Cmd + \`             | `Ctrl + \`            |
 | Toggle click-through                                                       | `Cmd + M`             | `Ctrl + M`            |
 | Toggle stealth mode                                                        | `Cmd + Shift + H`     | `Ctrl + Shift + H`    |
@@ -207,8 +207,8 @@ On macOS, **Option** is the key shown as `Alt` in the shortcut settings. Global 
 | Next response                                                              | `Cmd + ]`             | `Ctrl + ]`            |
 | Scroll response up                                                         | `Cmd + Shift + Up`    | `Ctrl + Shift + Up`   |
 | Scroll response down                                                       | `Cmd + Shift + Down`  | `Ctrl + Shift + Down` |
-| Increase opacity                                                           | `Option + .`          | `Alt + .`             |
-| Decrease opacity                                                           | `Option + ,`          | `Alt + ,`             |
+| Increase opacity                                                           | `Cmd + .`          | `Alt + .`             |
+| Decrease opacity                                                           | `Cmd + ,`          | `Alt + ,`             |
 | Send a typed message while its input is focused                            | `Enter`               | `Enter`               |
 | Emergency erase and quit                                                   | `Cmd + Shift + E`     | `Ctrl + Shift + E`    |
 

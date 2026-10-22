@@ -330,7 +330,26 @@ function updatePreference(key, value) {
 // ============ KEYBINDS ============
 
 function getKeybinds() {
-    return readJsonFile(getKeybindsPath(), DEFAULT_KEYBINDS);
+    let keybinds = readJsonFile(getKeybindsPath(), DEFAULT_KEYBINDS);
+    if (process.platform === 'darwin' && getPreferences().commandShortcutsVersion !== 1) {
+        if (keybinds && typeof keybinds === 'object' && !Array.isArray(keybinds)) {
+            keybinds = { ...keybinds };
+            const previous = {
+                moveUp: 'Alt+Up',
+                moveDown: 'Alt+Down',
+                moveLeft: 'Alt+Left',
+                moveRight: 'Alt+Right',
+                increaseOpacity: 'Alt+.',
+                decreaseOpacity: 'Alt+,',
+            };
+            for (const [action, shortcut] of Object.entries(previous)) {
+                if (keybinds[action] === shortcut) keybinds[action] = shortcut.replace('Alt+', 'Cmd+');
+            }
+            if (!setKeybinds(keybinds)) return keybinds;
+        }
+        updatePreference('commandShortcutsVersion', 1);
+    }
+    return keybinds;
 }
 
 function setKeybinds(keybinds) {

@@ -136,10 +136,10 @@ function createWindow(sendToRenderer, geminiSessionRef) {
 function getDefaultKeybinds() {
     const isMac = process.platform === 'darwin';
     return {
-        moveUp: isMac ? 'Alt+Up' : 'Ctrl+Up',
-        moveDown: isMac ? 'Alt+Down' : 'Ctrl+Down',
-        moveLeft: isMac ? 'Alt+Left' : 'Ctrl+Left',
-        moveRight: isMac ? 'Alt+Right' : 'Ctrl+Right',
+        moveUp: isMac ? 'Cmd+Up' : 'Ctrl+Up',
+        moveDown: isMac ? 'Cmd+Down' : 'Ctrl+Down',
+        moveLeft: isMac ? 'Cmd+Left' : 'Ctrl+Left',
+        moveRight: isMac ? 'Cmd+Right' : 'Ctrl+Right',
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         toggleStealthMode: isMac ? 'Cmd+Shift+H' : 'Ctrl+Shift+H',
@@ -149,8 +149,8 @@ function getDefaultKeybinds() {
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
         scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
-        increaseOpacity: 'Alt+.',
-        decreaseOpacity: 'Alt+,',
+        increaseOpacity: isMac ? 'Cmd+.' : 'Alt+.',
+        decreaseOpacity: isMac ? 'Cmd+,' : 'Alt+,',
         emergencyErase: isMac ? 'Cmd+Shift+E' : 'Ctrl+Shift+E',
     };
 }
