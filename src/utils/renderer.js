@@ -10,7 +10,8 @@ let micAudioProcessor = null;
 let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
-const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
+const audioCaptureResources = new Set();
+let audioCaptureGeneration = 0;
 
 let hiddenVideo = null;
 let offscreenCanvas = null;
@@ -153,10 +154,10 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
         const success = await ipcRenderer.invoke('initialize-gemini', apiKey, customPrompt, profile, language);
         if (success) {
             preechakAi.setStatus('Live');
-        } else {
-            preechakAi.setStatus('error');
         }
+        return success;
     }
+    return false;
 }
 
 async function initializeLocal(profile = 'interview') {
@@ -238,7 +239,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             channelCount: 1,
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true,
+            autoGainControl: preferencesCache.microphoneAutoGain === true,
         };
         if (audioInputDevice && audioInputDevice !== 'default') {
             constraints.deviceId = { ideal: audioInputDevice };
@@ -275,8 +276,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('macOS microphone capture started');
-                    setupLinuxMicProcessing(micStream);
+                    await setupLinuxMicProcessing(micStream);
                 } catch (micError) {
+                    ipcRenderer.invoke('coach:audio-status', { source: 'You', status: 'capture-error', message: micError.message }).catch(() => {});
                     console.warn('Failed to get microphone access on macOS:', micError);
                 }
             } else if (audioMode === 'both') {
@@ -291,8 +293,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('macOS microphone capture started for both mode');
-                    setupLinuxMicProcessing(micStream);
+                    await setupLinuxMicProcessing(micStream);
                 } catch (micError) {
+                    ipcRenderer.invoke('coach:audio-status', { source: 'You', status: 'capture-error', message: micError.message }).catch(() => {});
                     console.warn('Failed to get microphone access on macOS for both mode:', micError);
                 }
             }
@@ -314,7 +317,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         },
                     });
                     console.log('Linux system audio capture via getDisplayMedia succeeded');
-                    setupLinuxSystemAudioProcessing();
+                    await setupLinuxSystemAudioProcessing();
                 } catch (systemAudioError) {
                     console.warn('System audio via getDisplayMedia failed, fallback to screen-only:', systemAudioError);
                     mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -341,8 +344,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('Linux microphone-only capture started');
-                    setupLinuxMicProcessing(micStream);
+                    await setupLinuxMicProcessing(micStream);
                 } catch (micError) {
+                    ipcRenderer.invoke('coach:audio-status', { source: 'You', status: 'capture-error', message: micError.message }).catch(() => {});
                     console.warn('Failed to get microphone access on Linux:', micError);
                 }
             } else if (audioMode === 'both') {
@@ -361,7 +365,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                             autoGainControl: false,
                         },
                     });
-                    setupLinuxSystemAudioProcessing();
+                    await setupLinuxSystemAudioProcessing();
                 } catch (systemAudioError) {
                     console.warn('System audio via getDisplayMedia failed:', systemAudioError);
                     mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -379,8 +383,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('Linux microphone capture started for both mode');
-                    setupLinuxMicProcessing(micStream);
+                    await setupLinuxMicProcessing(micStream);
                 } catch (micError) {
+                    ipcRenderer.invoke('coach:audio-status', { source: 'You', status: 'capture-error', message: micError.message }).catch(() => {});
                     console.warn('Failed to get microphone access on Linux for both mode:', micError);
                 }
             }
@@ -396,13 +401,13 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     audio: {
                         sampleRate: SAMPLE_RATE,
                         channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
                     },
                 });
                 console.log('Windows capture started with loopback audio');
-                setupWindowsLoopbackProcessing();
+                await setupWindowsLoopbackProcessing();
             } else if (audioMode === 'mic_only') {
                 mediaStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
@@ -418,8 +423,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('Windows microphone-only capture started');
-                    setupLinuxMicProcessing(micStream);
+                    await setupLinuxMicProcessing(micStream);
                 } catch (micError) {
+                    ipcRenderer.invoke('coach:audio-status', { source: 'You', status: 'capture-error', message: micError.message }).catch(() => {});
                     console.warn('Failed to get microphone access on Windows:', micError);
                 }
             } else if (audioMode === 'both') {
@@ -432,21 +438,22 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     audio: {
                         sampleRate: SAMPLE_RATE,
                         channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
                     },
                 });
                 console.log('Windows dual capture started with loopback audio');
-                setupWindowsLoopbackProcessing();
+                await setupWindowsLoopbackProcessing();
                 try {
                     const micStream = await navigator.mediaDevices.getUserMedia({
                         audio: getMicAudioConstraints(),
                         video: false,
                     });
                     console.log('Windows microphone capture started for both mode');
-                    setupLinuxMicProcessing(micStream);
+                    await setupLinuxMicProcessing(micStream);
                 } catch (micError) {
+                    ipcRenderer.invoke('coach:audio-status', { source: 'You', status: 'capture-error', message: micError.message }).catch(() => {});
                     console.warn('Failed to get microphone access on Windows for both mode:', micError);
                 }
             }
@@ -460,103 +467,86 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
         // Manual mode only - screenshots captured on demand via shortcut
         console.log('Manual mode enabled - screenshots will be captured on demand only');
+        return true;
     } catch (err) {
         console.error('Error starting capture:', err);
-        preechakAi.setStatus('error');
+        stopCapture();
+        preechakAi.setStatus(`Capture error: ${err.message}`);
+        return false;
     }
 }
 
-function setupLinuxMicProcessing(micStream) {
-    // Setup microphone audio processing for Linux
-    const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const micSource = micAudioContext.createMediaStreamSource(micStream);
-    const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    micProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await ipcRenderer.invoke('send-mic-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
+async function setupAudioWorklet(stream, microphone) {
+    const generation = audioCaptureGeneration;
+    const context = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const resource = { context, stream, node: null };
+    audioCaptureResources.add(resource);
+    try {
+        if (!stream.getAudioTracks().length) throw new Error('No audio track was provided by the capture device');
+        await context.audioWorklet.addModule(new URL('./utils/audio-capture-worklet.js', window.location.href).href);
+        if (generation !== audioCaptureGeneration) throw new Error('Audio capture stopped');
+        const node = new AudioWorkletNode(context, 'interview-audio-capture', { processorOptions: { microphone } });
+        resource.node = node;
+        const source = context.createMediaStreamSource(stream);
+        const filter = context.createGain();
+        filter.gain.value = 0;
+        source.connect(node);
+        node.connect(filter);
+        filter.connect(context.destination);
+        let inFlight = 0;
+        node.port.onmessage = event => {
+            if (generation !== audioCaptureGeneration) return;
+            const { pcm, rms, clipped } = event.data;
+            window.dispatchEvent(
+                new CustomEvent('audio-input-status', {
+                    detail: {
+                        source: microphone ? 'You' : 'Interviewer',
+                        rms,
+                        clipped,
+                        settings: microphone ? stream.getAudioTracks()[0]?.getSettings() : undefined,
+                    },
+                })
+            );
+            // Bound IPC pressure. Report a gap rather than building an unlimited queue.
+            if (inFlight >= 10) {
+                preechakAi.setStatus('Audio upload delayed; check the connection');
+                return;
+            }
+            inFlight++;
+            ipcRenderer
+                .invoke(microphone ? 'send-mic-audio-content' : 'send-audio-content', {
+                    data: arrayBufferToBase64(pcm),
+                    mimeType: 'audio/pcm;rate=24000',
+                })
+                .catch(error => preechakAi.setStatus(`Audio error: ${error.message}`))
+                .finally(() => inFlight--);
+        };
+        for (const track of stream.getAudioTracks())
+            track.addEventListener('ended', () => {
+                if (generation === audioCaptureGeneration)
+                    preechakAi.setStatus(`${microphone ? 'Microphone' : 'System audio'} disconnected. Restart capture.`);
             });
-        }
-    };
-
-    micSource.connect(micProcessor);
-    micProcessor.connect(micAudioContext.destination);
-
-    // Store processor reference for cleanup
-    micAudioProcessor = micProcessor;
+        await context.resume();
+        ipcRenderer.invoke('coach:audio-status', { source: microphone ? 'You' : 'Interviewer', status: 'capturing' }).catch(() => {});
+        return node;
+    } catch (error) {
+        audioCaptureResources.delete(resource);
+        stream.getAudioTracks().forEach(track => track.stop());
+        await context.close().catch(() => {});
+        throw error;
+    }
 }
 
-function setupLinuxSystemAudioProcessing() {
-    // Setup system audio processing for Linux (from getDisplayMedia)
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
-    };
-
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
+async function setupLinuxMicProcessing(micStream) {
+    micAudioProcessor = await setupAudioWorklet(micStream, true);
 }
 
-function setupWindowsLoopbackProcessing() {
-    // Setup audio processing for Windows loopback audio only
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+async function setupLinuxSystemAudioProcessing() {
+    audioProcessor = await setupAudioWorklet(mediaStream, false);
+}
 
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
-    };
-
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
+async function setupWindowsLoopbackProcessing() {
+    audioProcessor = await setupAudioWorklet(mediaStream, false);
 }
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
@@ -903,6 +893,13 @@ window.captureManualScreenshot = captureManualScreenshot;
 window.captureSnipArea = captureSnipArea;
 
 function stopCapture() {
+    audioCaptureGeneration++;
+    for (const resource of audioCaptureResources) {
+        if (resource.node) resource.node.port.onmessage = null;
+        resource.stream.getAudioTracks().forEach(track => track.stop());
+        resource.context.close().catch(() => {});
+    }
+    audioCaptureResources.clear();
     currentDisplayId = null;
 
     if (screenshotInterval) {

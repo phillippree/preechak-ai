@@ -191,7 +191,7 @@
         <script>
             if (typeof module === 'object') {
                 window.__temp_module = module;
-                window.__temp_exports = exports;
+                window.__temp_exports = typeof exports === 'undefined' ? undefined : exports;
                 window.module = undefined;
                 window.exports = undefined;
             }

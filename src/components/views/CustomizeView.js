@@ -224,6 +224,7 @@ export class CustomizeView extends LitElement {
         onLanguageChange: { type: Function },
         onImageQualityChange: { type: Function },
         audioMode: { type: String },
+        microphoneAutoGain: { state: true },
         audioInputDevice: { type: String },
         audioInputDevices: { type: Array, state: true },
         vadEnergyThreshold: { type: Number },
@@ -253,7 +254,8 @@ export class CustomizeView extends LitElement {
         this.clearStatusType = '';
         this.backgroundTransparency = 0.8;
         this.fontSize = 20;
-        this.audioMode = 'speaker_only';
+        this.audioMode = 'both';
+        this.microphoneAutoGain = false;
         this.audioInputDevice = 'default';
         this.audioInputDevices = [];
         this.vadEnergyThreshold = 95;
@@ -280,7 +282,8 @@ export class CustomizeView extends LitElement {
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
-            this.audioMode = prefs.audioMode ?? 'speaker_only';
+            this.audioMode = prefs.audioMode ?? 'both';
+            this.microphoneAutoGain = prefs.microphoneAutoGain === true;
             this.audioInputDevice = prefs.audioInputDevice || 'default';
             this.vadEnergyThreshold = prefs.vadEnergyThreshold ?? 95;
             this.customPrompt = prefs.customPrompt ?? '';
@@ -664,7 +667,8 @@ export class CustomizeView extends LitElement {
                 selectedLanguage: 'en-US',
                 selectedScreenshotInterval: '5',
                 selectedImageQuality: 'medium',
-                audioMode: 'speaker_only',
+                audioMode: 'both',
+                microphoneAutoGain: false,
                 fontSize: 20,
                 backgroundTransparency: 0.8,
                 stealthMode: true,
@@ -692,6 +696,7 @@ export class CustomizeView extends LitElement {
             this.selectedLanguage = defaults.selectedLanguage;
             this.selectedImageQuality = defaults.selectedImageQuality;
             this.audioMode = defaults.audioMode;
+            this.microphoneAutoGain = defaults.microphoneAutoGain;
             this.fontSize = defaults.fontSize;
             this.backgroundTransparency = defaults.backgroundTransparency;
             this.stealthMode = defaults.stealthMode;
@@ -758,6 +763,24 @@ export class CustomizeView extends LitElement {
         return html`
             <section class="surface">
                 <div class="surface-title">Audio Input</div>
+                <p class="form-hint">
+                    Use Both Speaker and Microphone for conversation coaching. Headphones reduce interviewer audio leaking into your microphone.
+                    Changes apply on the next session.
+                </p>
+                <label class="form-label"
+                    ><input
+                        type="checkbox"
+                        .checked=${this.microphoneAutoGain}
+                        @change=${async e => {
+                            this.microphoneAutoGain = e.target.checked;
+                            await preechakAi.storage.updatePreference('microphoneAutoGain', this.microphoneAutoGain);
+                        }}
+                    />
+                    Automatic microphone gain</label
+                >
+                <p class="form-hint">
+                    Leave off if gain amplifies room noise. Echo cancellation, noise suppression, and a speech-frequency filter remain enabled.
+                </p>
                 <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Audio Mode</label>
@@ -767,23 +790,21 @@ export class CustomizeView extends LitElement {
                             <option value="both">Both Speaker and Microphone</option>
                         </select>
                     </div>
-                    ${
-                        this.audioMode !== 'speaker_only'
-                            ? html`
-                                  <div class="form-group">
-                                      <label class="form-label">Microphone Device</label>
-                                      <select class="control" .value=${this.audioInputDevice} @change=${this.handleAudioInputDeviceSelect}>
-                                          <option value="default">Default System Microphone</option>
-                                          ${this.audioInputDevices.map(
-                                              (device, idx) => html`
-                                                  <option value=${device.deviceId}>${device.label || `Microphone ${idx + 1}`}</option>
-                                              `
-                                          )}
-                                      </select>
-                                  </div>
-                              `
-                            : ''
-                    }
+                    ${this.audioMode !== 'speaker_only'
+                        ? html`
+                              <div class="form-group">
+                                  <label class="form-label">Microphone Device</label>
+                                  <select class="control" .value=${this.audioInputDevice} @change=${this.handleAudioInputDeviceSelect}>
+                                      <option value="default">Default System Microphone</option>
+                                      ${this.audioInputDevices.map(
+                                          (device, idx) => html`
+                                              <option value=${device.deviceId}>${device.label || `Microphone ${idx + 1}`}</option>
+                                          `
+                                      )}
+                                  </select>
+                              </div>
+                          `
+                        : ''}
                     <div class="form-group">
                         <label class="form-label">Image Quality</label>
                         <select class="control" .value=${this.selectedImageQuality} @change=${this.handleImageQualitySelect}>
@@ -945,11 +966,9 @@ export class CustomizeView extends LitElement {
                         ${this.isClearing ? 'Clearing...' : 'Delete all data'}
                     </button>
                 </div>
-                ${
-                    this.clearStatusMessage
-                        ? html` <div class="status ${this.clearStatusType === 'success' ? 'success' : 'error'}">${this.clearStatusMessage}</div> `
-                        : ''
-                }
+                ${this.clearStatusMessage
+                    ? html` <div class="status ${this.clearStatusType === 'success' ? 'success' : 'error'}">${this.clearStatusMessage}</div> `
+                    : ''}
             </section>
         `;
     }

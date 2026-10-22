@@ -1328,7 +1328,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         const config = getConfig();
         const transportMode = config.apiTransportMode || 'websocket';
 
-        if (transportMode === 'http') {
+        if (transportMode === 'http' || getPreferences()?.conversationCoaching === true) {
             currentProviderMode = 'byok_http';
             const success = await getGeminiHttp().initializeGeminiHttpSession(apiKey, customPrompt, profile, language);
             return success;
@@ -1603,6 +1603,18 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return getGeminiHttp().selectHistoryAttachment(id);
     });
 
+    ipcMain.handle('coach:audio-status', (_, event) => {
+        if (!event || !['You', 'Interviewer'].includes(event.source) || !['capturing', 'capture-error'].includes(event.status))
+            return { success: false };
+        return getGeminiHttp().setCaptureStatus({
+            source: event.source,
+            status: event.status,
+            message: typeof event.message === 'string' ? event.message.slice(0, 300) : '',
+        });
+    });
+    ipcMain.handle('coach:get-state', () => getGeminiHttp().getCoachState());
+    ipcMain.handle('coach:new-problem', () => getGeminiHttp().startNewProblem());
+
     ipcMain.handle('gemini-http:clear-attachments', () => {
         return getGeminiHttp().clearActiveAttachments();
     });
@@ -1667,6 +1679,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('set-audio-mute-state', (event, { micMuted, speakerMuted }) => {
         if (micMuted !== undefined) isMicMuted = !!micMuted;
         if (speakerMuted !== undefined) isSpeakerMuted = !!speakerMuted;
+        if (currentProviderMode === 'byok_http') getGeminiHttp().setAudioMuted({ micMuted: isMicMuted, speakerMuted: isSpeakerMuted });
         return { success: true, isMicMuted, isSpeakerMuted };
     });
 

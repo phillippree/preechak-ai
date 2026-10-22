@@ -17,6 +17,8 @@ const whisperRuntime = require('./whisper-runtime');
 const { createSpeechSegmenter } = require('./speech-segmenter');
 
 let httpSessionActive = false;
+let coach = null;
+let transcriptionStreams = null;
 let useLocalWhisper = false;
 let transcriptionMode = 'whisper';
 let activeWhisperModel = 'base.en';
@@ -139,6 +141,7 @@ function registerScreenshot({ id, path: filePath, base64Data, timestamp = Date.n
         timestamp,
         path: filePath,
         mimeType: 'image/jpeg',
+        problemId: coach?.problemId || null,
     };
 
     sessionScreenshots.push(screenshotEntry);
@@ -146,8 +149,8 @@ function registerScreenshot({ id, path: filePath, base64Data, timestamp = Date.n
         cacheImageData(screenshotId, base64Data);
     }
 
-    // A newly captured screenshot becomes the active image (single active attachment)
-    activeAttachments = [screenshotId];
+    // Coaching can combine a problem statement and an updated code/example image.
+    activeAttachments = coach ? [...activeAttachments, screenshotId].slice(-2) : [screenshotId];
     broadcastAttachmentsUpdate();
 
     return screenshotEntry;
@@ -220,6 +223,11 @@ function clearActiveAttachments() {
 
 function switchSessionProfile(newProfile, customPrompt = '') {
     sessionProfile = newProfile;
+    if (coach) {
+        coach.profile = newProfile;
+        coach.customPrompt = customPrompt;
+        coach.addTurn({ kind: 'mode-change', source: 'App', text: `Session mode changed to ${newProfile}` });
+    }
     sessionCustomPrompt = customPrompt;
     const prefs = getPreferences() || {};
     const googleSearchEnabled = prefs.googleSearchEnabled === true;
@@ -245,6 +253,10 @@ function switchSessionProfile(newProfile, customPrompt = '') {
 }
 
 async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US') {
+    coach?.close();
+    transcriptionStreams?.close();
+    coach = null;
+    transcriptionStreams = null;
     sessionGeneration++;
     pendingSpeech = [];
     sessionApiKey = apiKey;
@@ -262,6 +274,73 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
     imageCache.clear();
 
     const prefs = getPreferences() || {};
+    if (prefs.conversationCoaching === true) {
+        const { InterviewCoach } = require('./interview-coach');
+        const { GeminiTranscription } = require('./gemini-transcription');
+        const generation = sessionGeneration;
+        const isCurrent = () => generation === sessionGeneration && httpSessionActive;
+        const emit = (channel, data) => {
+            if (isCurrent()) sendToRenderer(channel, data);
+        };
+        httpSessionActive = true;
+        useLocalWhisper = false;
+        transcriptionMode = 'gemini-streaming';
+        initializeNewSession(profile, customPrompt);
+        coach = new InterviewCoach({
+            ai: new GoogleGenAI({ apiKey }),
+            model: getConfig().geminiHttpModel || 'gemini-3.8-flash',
+            profile,
+            customPrompt,
+            emit,
+            onNewProblem: ids => {
+                activeAttachments = ids || [];
+                broadcastAttachmentsUpdate();
+            },
+            saveTurn: (...args) => {
+                if (isCurrent()) saveConversationTurn(...args);
+            },
+            getImages: ids =>
+                (ids || activeAttachments)
+                    .slice(0, 2)
+                    .map(id => ({
+                        id,
+                        label: `Active problem image ${id}`,
+                        data: getAttachmentData(id),
+                    }))
+                    .filter(image => image.data),
+        });
+        const sessionCoach = coach;
+        const sources = prefs.audioMode === 'mic_only' ? ['You'] : prefs.audioMode === 'speaker_only' ? ['Interviewer'] : ['You', 'Interviewer'];
+        transcriptionStreams = new GeminiTranscription({
+            apiKey,
+            language,
+            sources,
+            model: prefs.geminiTranscriptionModel || 'gemini-3.5-transcribe-live',
+            onTranscript: event => {
+                if (isCurrent()) sessionCoach.transcript(event);
+            },
+            onStatus: event => {
+                if (isCurrent()) sessionCoach.status(event);
+            },
+        });
+        sendToRenderer('session-initializing', true);
+        sendToRenderer('update-status', 'Connecting Gemini conversation coach...');
+        try {
+            await transcriptionStreams.start();
+            if (!isCurrent()) return false;
+            sessionCoach.publish();
+            sendToRenderer('session-initializing', false);
+            sendToRenderer('update-status', 'Listening · Conversation Coach');
+            broadcastAttachmentsUpdate();
+            return true;
+        } catch (error) {
+            if (generation !== sessionGeneration) return false;
+            closeGeminiHttpSession();
+            sendToRenderer('session-initializing', false);
+            sendToRenderer('update-status', `Error: ${error.message}. Check Gemini Live transcription access or disable Conversation Coach.`);
+            return false;
+        }
+    }
     if (prefs.geminiHttpTranscriptionMode) {
         transcriptionMode = prefs.geminiHttpTranscriptionMode;
     } else if (prefs.geminiHttpLocalWhisper === true) {
@@ -313,6 +392,11 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
 }
 
 function closeGeminiHttpSession() {
+    coach?.close();
+    transcriptionStreams?.close();
+    coach = null;
+    transcriptionStreams = null;
+    sendToRenderer('coach-state', { active: false });
     sessionGeneration++;
     pendingSpeech = [];
     httpSessionActive = false;
@@ -538,6 +622,10 @@ function processHttpAudioChunk(pcmBuffer, speaker = 'Interviewer') {
         return;
     }
     const source = speaker === 'You' ? 'You' : 'Interviewer';
+    if (transcriptionStreams) {
+        transcriptionStreams.send(source, pcmBuffer);
+        return;
+    }
     let segmenter = audioSegmenters.get(source);
     if (!segmenter) {
         const configuredThreshold = getPreferences()?.vadEnergyThreshold;
@@ -751,6 +839,7 @@ async function handleSpeechSegment(pcmBuffer, speaker = 'Interviewer', snapshott
 }
 
 async function sendTextToGeminiHttp(text) {
+    if (coach && typeof text === 'string' && text.trim()) return coach.request(text.trim(), { imageIds: [...activeAttachments] });
     if (!text || text.trim() === '') return { success: false, error: 'Empty text' };
 
     const formattedText = `[You]: ${text.trim()}`;
@@ -853,6 +942,15 @@ async function handleHttpScreenshot(base64Data, prompt, savedImagePath = null) {
         timestamp: Date.now(),
     });
 
+    if (coach) {
+        const sessionCoach = coach;
+        const task =
+            'Analyze the attached screen in the current conversation. For a coding problem, explain and provide straightforward and optimized solutions. Use confirmed spoken constraints; do not start a new problem merely because a screenshot arrived.';
+        const result = await sessionCoach.request(task, { screenshotPrompt: prompt || '', imageIds: [...activeAttachments], kind: 'screen-request' });
+        if (result.success && coach === sessionCoach)
+            saveScreenAnalysis(prompt || task, result.text, result.model, `data:image/jpeg;base64,${base64Data}`, savedImagePath);
+        return { ...result, imageId: attachmentEntry.id, imagePath: savedImagePath };
+    }
     const turnPrompt = prompt || 'Analyze this screen screenshot and provide a clear, actionable answer.';
     const formattedPrompt = `[Screen Analysis]: ${turnPrompt}`;
     const turnAttachmentIds = [attachmentEntry.id];
@@ -968,6 +1066,23 @@ module.exports = {
     compareWithPrevious,
     selectHistoryAttachment,
     clearActiveAttachments,
+    setAudioMuted: ({ micMuted, speakerMuted }) => {
+        transcriptionStreams?.mute('You', micMuted);
+        transcriptionStreams?.mute('Interviewer', speakerMuted);
+    },
+    setCaptureStatus: event => {
+        if (!coach) return { success: false };
+        coach.sources[event.source] = { ...coach.sources[event.source], captureStatus: event.status, captureMessage: event.message };
+        coach.publish();
+        return { success: true };
+    },
+    getCoachState: () => coach?.lastState || { active: false },
+    startNewProblem: () => {
+        if (!coach) return { success: false, error: 'Conversation Coach is not active' };
+        coach.newProblem();
+        clearActiveAttachments();
+        return { success: true };
+    },
     isUsingLocalWhisper: () => useLocalWhisper,
     getTranscriptionMode: () => transcriptionMode,
 };

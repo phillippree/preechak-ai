@@ -1,5 +1,7 @@
 # Transcription flow
 
+**Conversation Coach:** Gemini API sessions now default to independent streaming transcription and selective, conversation-aware coaching. See [Conversation Coach](conversation-coach.md) for setup, screenshots, data flow, and limits. The buffered HTTP and Local AI paths described below remain available when coaching is disabled.
+
 This document describes the source as reviewed on September 29, 2026. Transcription converts captured speech into text; answer generation uses that text to produce a response. These are separate steps. Diagrams use Mermaid and render on GitHub.
 
 ## Modes and defaults

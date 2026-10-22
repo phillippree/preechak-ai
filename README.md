@@ -309,6 +309,12 @@ Audio and image payloads are summarized rather than printed as Base64. Credentia
 
 On macOS/Linux, use `LLM_LOG_REQUESTS=0 npm start` to disable these request logs. To include summaries of individual Gemini Live audio chunks, use `LLM_LOG_AUDIO=1 npm start`; this produces frequent output. In PowerShell, set `$env:LLM_LOG_REQUESTS="0"` or `$env:LLM_LOG_AUDIO="1"` before running `npm start`.
 
+## Conversation Coach
+
+Gemini API sessions offer **Conversation Coach** under Home → Gemini API & Connection. It streams microphone and system audio separately, displays live captions, and uses the shared interview context to explain, suggest a brief next step, revise solutions, or stay quiet. Screen analysis combines the current problem and conversation with selected images, providing straightforward and optimized coding solutions when appropriate.
+
+Choose **Both Speaker and Microphone** under Customize → Audio Input to capture both sides; existing saved source choices are respected. The feature uses Gemini Live transcription plus the configured coaching model and requires access to both. It does not route coaching through Groq. Disable Conversation Coach to use the legacy transport and transcription options. See [Conversation Coach](documents/conversation-coach.md) for behavior, storage, limitations, and tests.
+
 ## Development and packaging
 
 The current app uses JavaScript, Lit components, Electron, and Electron Forge.

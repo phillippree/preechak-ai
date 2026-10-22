@@ -941,6 +941,7 @@ export class MainView extends LitElement {
         _geminiHttpModel: { state: true },
         _geminiHttpLocalWhisper: { state: true },
         _geminiHttpTranscriptionMode: { state: true },
+        _conversationCoaching: { state: true },
         _groqModel: { state: true },
         _groqImageModel: { state: true },
         _disableGroqThinking: { state: true },
@@ -980,6 +981,7 @@ export class MainView extends LitElement {
         this._geminiHttpModel = 'gemini-3.8-flash';
         this._geminiHttpLocalWhisper = false;
         this._geminiHttpTranscriptionMode = 'whisper';
+        this._conversationCoaching = true;
         this._groqModel = 'qwen/qwen3.6-27b';
         this._groqImageModel = 'qwen/qwen3.6-27b';
         this._disableGroqThinking = true;
@@ -1035,6 +1037,7 @@ export class MainView extends LitElement {
             this._localLlmModel = prefs.localLlmModel || 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M';
             this._useCustomLocalLlmModel = !LOCAL_LLM_PRESETS.some(preset => preset.value === this._localLlmModel);
             this._whisperModel = prefs.whisperModel || 'base.en';
+            this._conversationCoaching = prefs.conversationCoaching !== false;
             this._geminiHttpTranscriptionMode = prefs.geminiHttpTranscriptionMode || (prefs.geminiHttpLocalWhisper === true ? 'whisper' : 'whisper');
             this._geminiHttpLocalWhisper = this._geminiHttpTranscriptionMode === 'whisper';
 
@@ -1466,113 +1469,99 @@ export class MainView extends LitElement {
                     </div>
                 </div>
 
-                ${
-                    isDownloading
-                        ? html`
-                              <div class="whisper-progress-container" aria-live="polite">
-                                  <div class="whisper-progress-header">
-                                      <span>${downloadProgress?.label || 'Downloading components...'}</span>
-                                      <span>
-                                          ${
-                                              downloadProgress?.percentage !== null && downloadProgress?.percentage !== undefined
-                                                  ? `${downloadProgress.percentage}%`
-                                                  : ''
-                                          }
-                                      </span>
-                                  </div>
-                                  <div class="whisper-progress-bar-track">
-                                      <div
-                                          class="whisper-progress-bar-fill ${downloadProgress?.percentage === null ? 'indeterminate' : ''}"
-                                          style="width: ${
-                                              downloadProgress?.percentage !== null && downloadProgress?.percentage !== undefined
-                                                  ? `${downloadProgress.percentage}%`
-                                                  : '40%'
-                                          }"
-                                          role="progressbar"
-                                          aria-valuenow="${downloadProgress?.percentage || 0}"
-                                          aria-valuemin="0"
-                                          aria-valuemax="100"
-                                      ></div>
-                                  </div>
-                                  <div class="whisper-progress-header">
-                                      <span>
-                                          ${
-                                              downloadProgress?.expectedBytes > 0
-                                                  ? `${this._formatBytes(downloadProgress.downloadedBytes)} / ${this._formatBytes(downloadProgress.expectedBytes)}`
-                                                  : downloadProgress?.downloadedBytes > 0
-                                                    ? `${this._formatBytes(downloadProgress.downloadedBytes)} downloaded`
-                                                    : ''
-                                          }
-                                      </span>
-                                      <button class="btn-action-sm" type="button" @click=${() => this._cancelWhisperDownload()}>Cancel</button>
-                                  </div>
+                ${isDownloading
+                    ? html`
+                          <div class="whisper-progress-container" aria-live="polite">
+                              <div class="whisper-progress-header">
+                                  <span>${downloadProgress?.label || 'Downloading components...'}</span>
+                                  <span>
+                                      ${downloadProgress?.percentage !== null && downloadProgress?.percentage !== undefined
+                                          ? `${downloadProgress.percentage}%`
+                                          : ''}
+                                  </span>
                               </div>
-                          `
-                        : ''
-                }
+                              <div class="whisper-progress-bar-track">
+                                  <div
+                                      class="whisper-progress-bar-fill ${downloadProgress?.percentage === null ? 'indeterminate' : ''}"
+                                      style="width: ${downloadProgress?.percentage !== null && downloadProgress?.percentage !== undefined
+                                          ? `${downloadProgress.percentage}%`
+                                          : '40%'}"
+                                      role="progressbar"
+                                      aria-valuenow="${downloadProgress?.percentage || 0}"
+                                      aria-valuemin="0"
+                                      aria-valuemax="100"
+                                  ></div>
+                              </div>
+                              <div class="whisper-progress-header">
+                                  <span>
+                                      ${downloadProgress?.expectedBytes > 0
+                                          ? `${this._formatBytes(downloadProgress.downloadedBytes)} / ${this._formatBytes(downloadProgress.expectedBytes)}`
+                                          : downloadProgress?.downloadedBytes > 0
+                                            ? `${this._formatBytes(downloadProgress.downloadedBytes)} downloaded`
+                                            : ''}
+                                  </span>
+                                  <button class="btn-action-sm" type="button" @click=${() => this._cancelWhisperDownload()}>Cancel</button>
+                              </div>
+                          </div>
+                      `
+                    : ''}
                 ${this._whisperActionError ? html`<div class="form-hint" style="color: var(--danger);">${this._whisperActionError}</div>` : ''}
 
                 <div class="whisper-buttons-row">
-                    ${
-                        !isDownloading && (needsDownload || needsRepair)
-                            ? html`
-                                  <button
-                                      class="btn-action-sm primary"
-                                      type="button"
-                                      ?disabled=${this.isSessionActive}
-                                      @click=${() => this._downloadWhisper()}
-                                  >
-                                      ${needsRepair ? 'Download again (Repair)' : 'Download missing files'}
-                                  </button>
-                              `
-                            : ''
-                    }
+                    ${!isDownloading && (needsDownload || needsRepair)
+                        ? html`
+                              <button
+                                  class="btn-action-sm primary"
+                                  type="button"
+                                  ?disabled=${this.isSessionActive}
+                                  @click=${() => this._downloadWhisper()}
+                              >
+                                  ${needsRepair ? 'Download again (Repair)' : 'Download missing files'}
+                              </button>
+                          `
+                        : ''}
 
                     <button class="btn-action-sm" type="button" @click=${() => this._openWhisperFolder()}>Open download folder</button>
 
-                    ${
-                        !isDownloading && modelReady && !this._confirmDeleteModel
-                            ? html`
+                    ${!isDownloading && modelReady && !this._confirmDeleteModel
+                        ? html`
+                              <button
+                                  class="btn-action-sm danger"
+                                  type="button"
+                                  ?disabled=${this.isSessionActive}
+                                  @click=${() => {
+                                      this._confirmDeleteModel = true;
+                                      this.requestUpdate();
+                                  }}
+                              >
+                                  Remove model
+                              </button>
+                          `
+                        : ''}
+                </div>
+
+                ${this._confirmDeleteModel
+                    ? html`
+                          <div class="confirm-delete-box" role="alert">
+                              <span>Remove downloaded file for <strong>${model?.name || this._whisperModel}</strong>?</span>
+                              <div class="whisper-buttons-row" style="margin-top: 2px;">
+                                  <button class="btn-action-sm danger" type="button" @click=${() => this._handleDeleteWhisperModel()}>
+                                      Confirm Remove
+                                  </button>
                                   <button
-                                      class="btn-action-sm danger"
+                                      class="btn-action-sm"
                                       type="button"
-                                      ?disabled=${this.isSessionActive}
                                       @click=${() => {
-                                          this._confirmDeleteModel = true;
+                                          this._confirmDeleteModel = false;
                                           this.requestUpdate();
                                       }}
                                   >
-                                      Remove model
+                                      Cancel
                                   </button>
-                              `
-                            : ''
-                    }
-                </div>
-
-                ${
-                    this._confirmDeleteModel
-                        ? html`
-                              <div class="confirm-delete-box" role="alert">
-                                  <span>Remove downloaded file for <strong>${model?.name || this._whisperModel}</strong>?</span>
-                                  <div class="whisper-buttons-row" style="margin-top: 2px;">
-                                      <button class="btn-action-sm danger" type="button" @click=${() => this._handleDeleteWhisperModel()}>
-                                          Confirm Remove
-                                      </button>
-                                      <button
-                                          class="btn-action-sm"
-                                          type="button"
-                                          @click=${() => {
-                                              this._confirmDeleteModel = false;
-                                              this.requestUpdate();
-                                          }}
-                                      >
-                                          Cancel
-                                      </button>
-                                  </div>
                               </div>
-                          `
-                        : ''
-                }
+                          </div>
+                      `
+                    : ''}
             </div>
         `;
     }
@@ -1724,29 +1713,25 @@ export class MainView extends LitElement {
             >
                 <canvas class="btn-aurora"></canvas>
                 <canvas class="btn-dither"></canvas>
-                ${
-                    isDownloading
-                        ? html`<span
-                              class="download-progress-fill ${hasPercentage ? '' : 'indeterminate'}"
-                              style=${hasPercentage ? `width: ${percentage}%` : ''}
-                          ></span>`
-                        : ''
-                }
+                ${isDownloading
+                    ? html`<span
+                          class="download-progress-fill ${hasPercentage ? '' : 'indeterminate'}"
+                          style=${hasPercentage ? `width: ${percentage}%` : ''}
+                      ></span>`
+                    : ''}
                 <span class="btn-label">
                     ${isDownloading ? (hasPercentage ? `${percentage}%` : 'Preparing...') : 'Start Session'}
                     ${isDownloading ? '' : html`<span class="shortcut-hint">${isMac ? cmdIcon : ctrlIcon}${enterIcon}</span>`}
                 </span>
             </button>
-            ${
-                isDownloading
-                    ? html`
-                          <div class="download-controls">
-                              <span>Downloading: ${this.downloadProgress.label || 'Local AI files'}</span>
-                              <button class="download-cancel" @click=${() => this.onCancelDownload()}>Cancel</button>
-                          </div>
-                      `
-                    : ''
-            }
+            ${isDownloading
+                ? html`
+                      <div class="download-controls">
+                          <span>Downloading: ${this.downloadProgress.label || 'Local AI files'}</span>
+                          <button class="download-cancel" @click=${() => this.onCancelDownload()}>Cancel</button>
+                      </div>
+                  `
+                : ''}
         `;
     }
 
@@ -1781,7 +1766,11 @@ export class MainView extends LitElement {
                     <span class="config-summary-text">
                         <span class="config-summary-title">Gemini API & Connection</span>
                         <span class="config-summary-description"
-                            >${this._apiTransportMode === 'http' ? 'HTTP Buffered Requests' : 'WebSocket Live Streaming'}</span
+                            >${this._conversationCoaching
+                                ? 'Conversation Coach · Gemini'
+                                : this._apiTransportMode === 'http'
+                                  ? 'HTTP Buffered Requests'
+                                  : 'WebSocket Live Streaming'}</span
                         >
                     </span>
                     ${this._renderConfigChevron()}
@@ -1803,68 +1792,98 @@ export class MainView extends LitElement {
                     </div>
 
                     <div class="form-group">
+                        <label class="form-label">
+                            <input
+                                type="checkbox"
+                                .checked=${this._conversationCoaching}
+                                ?disabled=${this.isSessionActive}
+                                @change=${async e => {
+                                    this._conversationCoaching = e.target.checked;
+                                    await preechakAi.storage.updatePreference('conversationCoaching', this._conversationCoaching);
+                                }}
+                            />
+                            Conversation Coach
+                        </label>
+                        <div class="form-hint">
+                            Independent Gemini live captions, shared screenshot context, and selective coaching. Select Both Speaker and Microphone in
+                            Audio Input to include both sides. Audio is sent to Google; this mode uses Gemini only.
+                        </div>
+                    </div>
+                    ${this._conversationCoaching
+                        ? html`
+                              <div class="form-group">
+                                  <label class="form-label">Coaching and Solution Model</label>
+                                  <input
+                                      type="text"
+                                      .value=${this._geminiHttpModel}
+                                      ?disabled=${this.isSessionActive}
+                                      @input=${e => this._saveGeminiHttpModel(e.target.value)}
+                                  />
+                                  <div class="form-hint">
+                                      Live transcription uses gemini-3.5-transcribe-live. Your key must have access to that model.
+                                  </div>
+                              </div>
+                          `
+                        : ''}
+                    <div class="form-group">
                         <label class="form-label">Connection Mode</label>
-                        <select .value=${this._apiTransportMode} @change=${e => this._saveApiTransportMode(e.target.value)}>
+                        <select
+                            ?disabled=${this._conversationCoaching || this.isSessionActive}
+                            .value=${this._apiTransportMode}
+                            @change=${e => this._saveApiTransportMode(e.target.value)}
+                        >
                             <option value="websocket">Live Streaming (WebSocket) — Gemini Live</option>
                             <option value="http">Buffered Requests (HTTP) — Any Gemini Model</option>
                         </select>
                         <div class="form-hint">
-                            ${
-                                this._apiTransportMode === 'http'
-                                    ? 'Buffers audio segments upon pauses and queries standard Gemini models via HTTP REST.'
-                                    : 'Real-time bidirectional WebSocket streaming connection.'
-                            }
+                            ${this._apiTransportMode === 'http'
+                                ? 'Buffers audio segments upon pauses and queries standard Gemini models via HTTP REST.'
+                                : 'Real-time bidirectional WebSocket streaming connection.'}
                         </div>
                     </div>
 
-                    ${
-                        this._apiTransportMode === 'http'
-                            ? html`
-                                  <div class="form-group">
-                                      <label class="form-label">Gemini HTTP Model</label>
-                                      <input type="text" .value=${this._geminiHttpModel} @input=${e => this._saveGeminiHttpModel(e.target.value)} />
-                                      <div class="form-hint">Examples: gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-pro</div>
-                                  </div>
+                    ${this._apiTransportMode === 'http' && !this._conversationCoaching
+                        ? html`
+                              <div class="form-group">
+                                  <label class="form-label">Gemini HTTP Model</label>
+                                  <input type="text" .value=${this._geminiHttpModel} @input=${e => this._saveGeminiHttpModel(e.target.value)} />
+                                  <div class="form-hint">Examples: gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-pro</div>
+                              </div>
 
-                                  <div class="form-group">
-                                      <label class="form-label">Audio Transcription</label>
-                                      <select
-                                          class="control"
-                                          .value=${this._geminiHttpTranscriptionMode}
-                                          ?disabled=${this.isSessionActive}
-                                          @change=${e => this._saveGeminiHttpTranscriptionMode(e.target.value)}
-                                      >
-                                          <option value="whisper" ?selected=${this._geminiHttpTranscriptionMode === 'whisper'}>
-                                              Local Whisper (whisper.cpp · Offline)
-                                          </option>
-                                          <option value="gemini" ?selected=${this._geminiHttpTranscriptionMode === 'gemini'}>
-                                              Google Gemini Cloud
-                                          </option>
-                                          <option value="none" ?selected=${this._geminiHttpTranscriptionMode === 'none'}>
-                                              No Transcription (Manual Screenshots & Text Only)
-                                          </option>
-                                      </select>
-                                      <div class="form-hint">
-                                          ${
-                                              this._geminiHttpTranscriptionMode === 'whisper'
-                                                  ? 'Audio is transcribed locally with whisper.cpp. Only recognized text is sent to Gemini.'
-                                                  : this._geminiHttpTranscriptionMode === 'none'
-                                                    ? 'Audio listening is disabled. No sound is sent anywhere; ask questions via screenshots or typing.'
-                                                    : 'Audio is buffered and transcribed remotely by Google Gemini.'
-                                          }
-                                      </div>
+                              <div class="form-group">
+                                  <label class="form-label">Audio Transcription</label>
+                                  <select
+                                      class="control"
+                                      .value=${this._geminiHttpTranscriptionMode}
+                                      ?disabled=${this.isSessionActive}
+                                      @change=${e => this._saveGeminiHttpTranscriptionMode(e.target.value)}
+                                  >
+                                      <option value="whisper" ?selected=${this._geminiHttpTranscriptionMode === 'whisper'}>
+                                          Local Whisper (whisper.cpp · Offline)
+                                      </option>
+                                      <option value="gemini" ?selected=${this._geminiHttpTranscriptionMode === 'gemini'}>Google Gemini Cloud</option>
+                                      <option value="none" ?selected=${this._geminiHttpTranscriptionMode === 'none'}>
+                                          No Transcription (Manual Screenshots & Text Only)
+                                      </option>
+                                  </select>
+                                  <div class="form-hint">
+                                      ${this._geminiHttpTranscriptionMode === 'whisper'
+                                          ? 'Audio is transcribed locally with whisper.cpp. Only recognized text is sent to Gemini.'
+                                          : this._geminiHttpTranscriptionMode === 'none'
+                                            ? 'Audio listening is disabled. No sound is sent anywhere; ask questions via screenshots or typing.'
+                                            : 'Audio is buffered and transcribed remotely by Google Gemini.'}
                                   </div>
+                              </div>
 
-                                  ${this._geminiHttpTranscriptionMode === 'whisper' ? this._renderWhisperSection() : ''}
-                              `
-                            : html`
-                                  <div class="form-group">
-                                      <label class="form-label">Gemini Live Model</label>
-                                      <input type="text" .value=${this._geminiLiveModel} @input=${e => this._saveGeminiLiveModel(e.target.value)} />
-                                      <div class="form-hint">Live WebSocket model (e.g. gemini-3.1-flash-live-preview)</div>
-                                  </div>
-                              `
-                    }
+                              ${this._geminiHttpTranscriptionMode === 'whisper' ? this._renderWhisperSection() : ''}
+                          `
+                        : html`
+                              <div class="form-group">
+                                  <label class="form-label">Gemini Live Model</label>
+                                  <input type="text" .value=${this._geminiLiveModel} @input=${e => this._saveGeminiLiveModel(e.target.value)} />
+                                  <div class="form-hint">Live WebSocket model (e.g. gemini-3.1-flash-live-preview)</div>
+                              </div>
+                          `}
                 </div>
             </details>
 
@@ -1894,18 +1913,16 @@ export class MainView extends LitElement {
                             ${LOCAL_LLM_PRESETS.map(preset => html`<option value=${preset.value}>${preset.label}</option>`)}
                             <option value="custom">Custom Hugging Face model or local GGUF…</option>
                         </select>
-                        ${
-                            this._useCustomLocalLlmModel
-                                ? html`
-                                      <input
-                                          type="text"
-                                          placeholder="owner/repository:quant or /absolute/model.gguf"
-                                          .value=${this._localLlmModel}
-                                          @input=${event => this._saveLocalLlmModel(event.target.value)}
-                                      />
-                                  `
-                                : ''
-                        }
+                        ${this._useCustomLocalLlmModel
+                            ? html`
+                                  <input
+                                      type="text"
+                                      placeholder="owner/repository:quant or /absolute/model.gguf"
+                                      .value=${this._localLlmModel}
+                                      @input=${event => this._saveLocalLlmModel(event.target.value)}
+                                  />
+                              `
+                            : ''}
                         <div class="form-hint">Sizes include the vision model. Q4 uses less memory; Q8 preserves more quality.</div>
                     </div>
                 </div>
@@ -1960,16 +1977,14 @@ export class MainView extends LitElement {
 
         return html`
             <div class="form-wrapper">
-                ${
-                    this._mode === 'local'
-                        ? html`
-                              <div class="title-row">
-                                  <div class="page-title">Preechak AI <span class="mode-suffix">Local AI</span></div>
-                                  <button class="help-btn" @click=${this._openLocalHelp} aria-label="Open Local AI help">${helpIcon}</button>
-                              </div>
-                          `
-                        : html` <div class="page-title">Preechak AI</div> `
-                }
+                ${this._mode === 'local'
+                    ? html`
+                          <div class="title-row">
+                              <div class="page-title">Preechak AI <span class="mode-suffix">Local AI</span></div>
+                              <button class="help-btn" @click=${this._openLocalHelp} aria-label="Open Local AI help">${helpIcon}</button>
+                          </div>
+                      `
+                    : html` <div class="page-title">Preechak AI</div> `}
                 ${this._mode === 'local' ? html`<div class="page-subtitle">Run models locally on your machine</div>` : ''}
 
                 <!-- Cloud mode render branch intentionally disabled. -->

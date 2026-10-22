@@ -1,3 +1,5 @@
+> Gemini API sessions with Conversation Coach enabled use independent Live transcription and a shared coaching state instead of the buffered speech-to-answer flow below. Screenshot requests in coaching mode include relevant conversation context. See [Conversation Coach](conversation-coach.md). Disabling coaching preserves the legacy behavior described here.
+
 # HTTP-Based Gemini Architecture
 
 This document explains the **HTTP-based Gemini integration** added to Preechak AI, how it works alongside the existing **WebSocket Live** streaming pipeline, and how audio, transcription, context, and responses are processed.

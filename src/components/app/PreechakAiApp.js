@@ -828,7 +828,8 @@ export class PreechakAiApp extends LitElement {
                 return;
             }
 
-            await preechakAi.initializeGemini(this.selectedProfile, this.selectedLanguage);
+            const success = await preechakAi.initializeGemini(this.selectedProfile, this.selectedLanguage);
+            if (!success) return;
         }
 
         if (window.preechakAi && window.preechakAi.sessionManager) {
@@ -840,9 +841,14 @@ export class PreechakAiApp extends LitElement {
             });
         }
 
-        preechakAi.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
         this.currentResponseIndex = -1;
+        const captureStarted = await preechakAi.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        if (!captureStarted) {
+            if (window.require) await window.require('electron').ipcRenderer.invoke('close-session');
+            if (window.preechakAi?.sessionManager) await window.preechakAi.sessionManager.stop();
+            return;
+        }
         this.startTime = Date.now();
         this.sessionActive = true;
         this.currentView = 'assistant';
@@ -928,12 +934,23 @@ export class PreechakAiApp extends LitElement {
     }
 
     async handleSendText(message) {
-        const result = await window.preechakAi.sendTextMessage(message);
-        if (!result.success) {
-            this.setStatus('Error sending message: ' + result.error);
-        } else {
-            this.setStatus('Message sent...');
-            this._awaitingNewResponse = true;
+        this._awaitingNewResponse = true;
+        try {
+            const result = await window.preechakAi.sendTextMessage(message);
+            if (!result.success) {
+                this._awaitingNewResponse = false;
+                this.setStatus('Error sending message: ' + result.error);
+            } else if (typeof result.text === 'string') {
+                // HTTP/coaching requests return after their response was published.
+                this._awaitingNewResponse = false;
+                this._currentResponseIsComplete = true;
+                this.setStatus('Listening...');
+            } else {
+                this.setStatus('Message sent...');
+            }
+        } catch (error) {
+            this._awaitingNewResponse = false;
+            this.setStatus('Error sending message: ' + error.message);
         }
     }
 
@@ -1128,25 +1145,23 @@ export class PreechakAiApp extends LitElement {
                 </nav>
                 <div class="sidebar-footer">
                     ${this._localVersion ? html`<div class="version-text">v${this._localVersion}</div>` : ''}
-                    ${
-                        this._updateAvailable
-                            ? html`
-                                  <button class="update-btn" @click=${() => this.handleExternalLinkClick('https://preechakai.com/download')}>
-                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                                          <path
-                                              fill="none"
-                                              stroke="currentColor"
-                                              stroke-linecap="round"
-                                              stroke-linejoin="round"
-                                              stroke-width="2"
-                                              d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5l5-5m-5-7v12"
-                                          />
-                                      </svg>
-                                      Update available
-                                  </button>
-                              `
-                            : ''
-                    }
+                    ${this._updateAvailable
+                        ? html`
+                              <button class="update-btn" @click=${() => this.handleExternalLinkClick('https://preechakai.com/download')}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                      <path
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-linecap="round"
+                                          stroke-linejoin="round"
+                                          stroke-width="2"
+                                          d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5l5-5m-5-7v12"
+                                      />
+                                  </svg>
+                                  Update available
+                              </button>
+                          `
+                        : ''}
                 </div>
             </div>
         `;
@@ -1180,68 +1195,64 @@ export class PreechakAiApp extends LitElement {
                 </div>
                 <div class="live-bar-center">${profileLabels[this.selectedProfile] || 'Session'}</div>
                 <div class="live-bar-right">
-                    ${
-                        this.statusText
-                            ? html`
-                                  <span class="live-status-pill">
-                                      <span class="live-status-dot"></span>
-                                      <span>${this._isMicMuted && this._isSpeakerMuted ? 'Audio Muted' : this.statusText}</span>
-                                  </span>
-                              `
-                            : ''
-                    }
+                    ${this.statusText
+                        ? html`
+                              <span class="live-status-pill">
+                                  <span class="live-status-dot"></span>
+                                  <span>${this._isMicMuted && this._isSpeakerMuted ? 'Audio Muted' : this.statusText}</span>
+                              </span>
+                          `
+                        : ''}
                     <span class="live-bar-text">${this.getElapsedTime()}</span>
                     <button
                         class="live-mute-btn ${this._isMicMuted ? 'muted' : 'active'}"
                         @click=${() => this.handleToggleMicMute()}
-                        title="${this._isMicMuted ? 'Microphone is MUTED (no mic audio sent). Click to unmute.' : 'Microphone is ON (streaming to Gemini). Click to mute.'}"
+                        title="${this._isMicMuted
+                            ? 'Microphone is MUTED (no mic audio sent). Click to unmute.'
+                            : 'Microphone is ON (streaming to Gemini). Click to mute.'}"
                     >
-                        ${
-                            this._isMicMuted
-                                ? html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <line x1="1" y1="1" x2="23" y2="23" />
-                                          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                                          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-                                          <line x1="12" y1="19" x2="12" y2="23" />
-                                          <line x1="8" y1="23" x2="16" y2="23" /></svg
-                                      ><span>Mic Muted</span>`
-                                : html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                          <line x1="12" y1="19" x2="12" y2="23" />
-                                          <line x1="8" y1="23" x2="16" y2="23" /></svg
-                                      ><span>Mic</span>`
-                        }
+                        ${this._isMicMuted
+                            ? html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <line x1="1" y1="1" x2="23" y2="23" />
+                                      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                                      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+                                      <line x1="12" y1="19" x2="12" y2="23" />
+                                      <line x1="8" y1="23" x2="16" y2="23" /></svg
+                                  ><span>Mic Muted</span>`
+                            : html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                      <line x1="12" y1="19" x2="12" y2="23" />
+                                      <line x1="8" y1="23" x2="16" y2="23" /></svg
+                                  ><span>Mic</span>`}
                     </button>
                     <button
                         class="live-mute-btn ${this._isSpeakerMuted ? 'muted' : 'active'}"
                         @click=${() => this.handleToggleSpeakerMute()}
-                        title="${this._isSpeakerMuted ? 'System Audio is MUTED (no interviewer audio sent). Click to unmute.' : 'System Audio is ON (streaming to Gemini). Click to mute.'}"
+                        title="${this._isSpeakerMuted
+                            ? 'System Audio is MUTED (no interviewer audio sent). Click to unmute.'
+                            : 'System Audio is ON (streaming to Gemini). Click to mute.'}"
                     >
-                        ${
-                            this._isSpeakerMuted
-                                ? html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <line x1="1" y1="1" x2="23" y2="23" />
-                                          <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
-                                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                                          <line x1="23" y1="9" x2="17" y2="15" />
-                                          <line x1="17" y1="9" x2="23" y2="15" /></svg
-                                      ><span>System Muted</span>`
-                                : html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg
-                                      ><span>System</span>`
-                        }
+                        ${this._isSpeakerMuted
+                            ? html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <line x1="1" y1="1" x2="23" y2="23" />
+                                      <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+                                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                      <line x1="23" y1="9" x2="17" y2="15" />
+                                      <line x1="17" y1="9" x2="23" y2="15" /></svg
+                                  ><span>System Muted</span>`
+                            : html`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg
+                                  ><span>System</span>`}
                     </button>
                     <span
                         class="live-bar-text clickable stealth-pill ${this._stealthMode ? 'stealth-active' : 'stealth-off'}"
                         @click=${() => this.handleStealthToggle()}
-                        title="${
-                            this._stealthMode
-                                ? 'Stealth Mode: ON (Invisible to screen shares & screen recordings). Click to toggle.'
-                                : 'Stealth Mode: OFF (Visible in screen shares). Click to toggle.'
-                        }"
+                        title="${this._stealthMode
+                            ? 'Stealth Mode: ON (Invisible to screen shares & screen recordings). Click to toggle.'
+                            : 'Stealth Mode: OFF (Visible in screen shares). Click to toggle.'}"
                     >
                         ${this._stealthMode ? '[stealth: on]' : '[stealth: off]'}
                     </span>

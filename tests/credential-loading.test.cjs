@@ -62,3 +62,12 @@ test('saved Gemini key loads independently of a preferences failure', async () =
     await view._loadFromStorage();
     assert.equal(input.value, 'test-key');
 });
+
+test('renderer library bootstrap tolerates Electron exposing module without exports', () => {
+    const html = fs.readFileSync(path.join(__dirname, '../src/index.html'), 'utf8');
+    const script = html.match(/<script>\s*if \(typeof module === 'object'\)[\s\S]*?<\/script>/)[0].replace(/<\/?script>/g, '');
+    const context = { module: {}, window: {} };
+    vm.runInNewContext(script, context);
+    assert.equal(context.window.exports, undefined);
+    assert.equal(context.window.__temp_module, context.module);
+});

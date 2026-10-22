@@ -695,6 +695,55 @@ export class AssistantView extends LitElement {
                 }
             }
 
+            .coach-panel {
+                flex-shrink: 0;
+                padding: 10px 16px;
+                color: var(--text-primary);
+                background: var(--bg-surface);
+                border-top: 1px solid var(--border);
+                font-size: var(--font-size-sm);
+                max-height: 45vh;
+                overflow-y: auto;
+            }
+            .coach-toolbar,
+            .coach-sources {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 6px;
+            }
+            .coach-toolbar button {
+                background: var(--bg-elevated);
+                color: var(--text-primary);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: default;
+            }
+            .coach-captions {
+                max-height: 130px;
+                overflow-y: auto;
+                line-height: 1.5;
+            }
+            .coach-draft {
+                color: var(--text-secondary);
+                font-style: italic;
+            }
+            .coach-card {
+                border-left: 3px solid var(--accent);
+                padding: 6px 10px;
+                margin-top: 8px;
+            }
+            .coach-sources {
+                color: var(--text-secondary);
+                font-size: var(--font-size-xs);
+            }
+            .coach-sources meter {
+                width: 60px;
+                height: 10px;
+            }
+
             /* ── Bottom input bar ── */
 
             .input-bar {
@@ -889,7 +938,9 @@ export class AssistantView extends LitElement {
                 cursor: default;
             }
 
-            .session-mode-menu button span { width: 14px; }
+            .session-mode-menu button span {
+                width: 14px;
+            }
             .session-mode-menu button:hover,
             .session-mode-menu button:focus-visible {
                 background: var(--bg-hover);
@@ -1199,6 +1250,8 @@ export class AssistantView extends LitElement {
         attachmentsState: { type: Object, state: true },
         showHistoryPicker: { type: Boolean, state: true },
         showModeMenu: { state: true },
+        coachState: { state: true },
+        audioLevels: { state: true },
     };
 
     constructor() {
@@ -1222,6 +1275,8 @@ export class AssistantView extends LitElement {
         this.attachmentsState = { activeAttachmentIds: [], activeAttachments: [], screenshots: [] };
         this.showHistoryPicker = false;
         this.showModeMenu = false;
+        this.coachState = { active: false };
+        this.audioLevels = {};
     }
 
     _modeOptions() {
@@ -1386,6 +1441,21 @@ export class AssistantView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
+        this._audioLevelHandler = event => {
+            const detail = event.detail;
+            const previous = this.audioLevels[detail.source];
+            if (previous && Date.now() - previous.updatedAt < 400) return;
+            this.audioLevels = {
+                ...this.audioLevels,
+                [detail.source]: {
+                    rms: detail.rms,
+                    clipped: detail.clipped,
+                    settings: detail.settings,
+                    updatedAt: Date.now(),
+                },
+            };
+        };
+        window.addEventListener('audio-input-status', this._audioLevelHandler);
         this._dismissModeMenu = event => {
             const picker = this.shadowRoot.querySelector('.session-mode-pill-wrap');
             if (this.showModeMenu && !event.composedPath().includes(picker)) this._closeModeMenu();
@@ -1397,6 +1467,18 @@ export class AssistantView extends LitElement {
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
 
+            this._coachEventReceived = false;
+            this._coachStateHandler = (_, state) => {
+                this._coachEventReceived = true;
+                this.coachState = state;
+            };
+            ipcRenderer.on('coach-state', this._coachStateHandler);
+            ipcRenderer
+                .invoke('coach:get-state')
+                .then(state => {
+                    if (!this._coachEventReceived) this.coachState = state;
+                })
+                .catch(() => {});
             this.handleScrollUp = () => this.scrollResponseUp();
             this.handleScrollDown = () => this.scrollResponseDown();
 
@@ -1425,6 +1507,7 @@ export class AssistantView extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        window.removeEventListener('audio-input-status', this._audioLevelHandler);
         document.removeEventListener('pointerdown', this._dismissModeMenu, true);
         window.removeEventListener('blur', this._dismissModeMenuOnBlur);
         this.showModeMenu = false;
@@ -1432,6 +1515,7 @@ export class AssistantView extends LitElement {
 
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
+            if (this._coachStateHandler) ipcRenderer.removeListener('coach-state', this._coachStateHandler);
             if (this.handleScrollUp) ipcRenderer.removeListener('scroll-response-up', this.handleScrollUp);
             if (this.handleScrollDown) ipcRenderer.removeListener('scroll-response-down', this.handleScrollDown);
             if (this.handleAttachmentsUpdated) ipcRenderer.removeListener('gemini-http:attachments-updated', this.handleAttachmentsUpdated);
@@ -1628,6 +1712,10 @@ export class AssistantView extends LitElement {
     updated(changedProperties) {
         super.updated(changedProperties);
         renderMermaidDiagrams(this.shadowRoot);
+        if (changedProperties.has('coachState')) {
+            const captions = this.shadowRoot.querySelector('.coach-captions');
+            if (captions) captions.scrollTop = captions.scrollHeight;
+        }
 
         if (changedProperties.has('responses')) {
             if (!this.isScrolledUp) {
@@ -1680,7 +1768,77 @@ export class AssistantView extends LitElement {
         return 'you';
     }
 
+    renderCoachPanel() {
+        const state = this.coachState;
+        if (!state?.active) return '';
+        const problem = state.problem || {};
+        return html`
+            <section class="coach-panel" aria-label="Conversation coach">
+                <div class="coach-toolbar">
+                    <strong>Conversation Coach</strong>
+                    <span>${state.busy ? 'Evaluating context…' : 'Listening'}</span>
+                    <button
+                        type="button"
+                        @click=${async () => {
+                            const { ipcRenderer } = window.require('electron');
+                            await ipcRenderer.invoke('coach:new-problem');
+                        }}
+                    >
+                        New problem
+                    </button>
+                    <button
+                        type="button"
+                        @click=${() =>
+                            this.onSendText(
+                                'Update the straightforward and optimized solutions for the current problem using the latest confirmed requirements.'
+                            )}
+                    >
+                        Update solutions
+                    </button>
+                </div>
+                <div class="coach-sources">
+                    ${Object.entries(state.sources || {}).map(([source, status]) => {
+                        const muted = source === 'You' ? this.isMicMuted : this.isSpeakerMuted;
+                        return html`<span title=${status.message || ''}
+                            >${source}: ${muted ? 'muted' : status.status}
+                            ${this.audioLevels[source]
+                                ? html`<meter
+                                          min="0"
+                                          max="0.2"
+                                          value=${muted ? 0 : this.audioLevels[source].rms}
+                                          aria-label=${`${source} input level`}
+                                          title=${this.audioLevels[source].settings
+                                              ? `Noise suppression: ${this.audioLevels[source].settings.noiseSuppression ?? 'unknown'}; echo cancellation: ${this.audioLevels[source].settings.echoCancellation ?? 'unknown'}; auto gain: ${this.audioLevels[source].settings.autoGainControl ?? 'unknown'}`
+                                              : 'Input level'}
+                                      ></meter>
+                                      ${!muted && this.audioLevels[source].clipped ? 'Input clipping' : ''}`
+                                : ''}
+                            ${status.message || ''} ${status.captureStatus === 'capture-error' ? `Capture error: ${status.captureMessage}` : ''}
+                        </span>`;
+                    })}
+                </div>
+                ${problem.title ? html`<div><strong>Current problem:</strong> ${problem.title}</div>` : ''}
+                ${problem.requirements?.length ? html`<div><strong>Requirements:</strong> ${problem.requirements.join(' · ')}</div>` : ''}
+                ${problem.openQuestions?.length ? html`<div><strong>Unanswered:</strong> ${problem.openQuestions.join(' · ')}</div>` : ''}
+                <details class="coach-captions" open>
+                    <summary>Conversation captions</summary>
+                    ${(state.recentTurns || []).map(turn => html`<div><strong>${turn.source}:</strong> ${turn.text}</div>`)}
+                    ${(state.drafts || []).map(turn => html`<div class="coach-draft"><strong>${turn.source} — live:</strong> ${turn.text}</div>`)}
+                </details>
+                ${state.card
+                    ? html`<div
+                          class="coach-card bubble-ai-content"
+                          aria-live="polite"
+                          .innerHTML=${this.renderMarkdown(state.card)}
+                          @click=${this.handleContentClick}
+                      ></div>`
+                    : ''}
+            </section>
+        `;
+    }
+
     renderLiveIndicator() {
+        if (this.coachState?.active) return '';
         if (this.liveThinking && this.liveThinking.isThinking) {
             const speakerClass = this.getTurnSpeaker(this.liveThinking.prompt, this.liveThinking);
             return html`
@@ -1760,17 +1918,15 @@ export class AssistantView extends LitElement {
                         <div class="bubble-user typing-bubble ${speakerClass}">
                             <div class="typing-bubble-inner">
                                 <div class="speaker-turn-badge ${speakerClass}">
-                                    ${
-                                        isYou
-                                            ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                                                  <circle cx="12" cy="7" r="4" />
-                                              </svg>`
-                                            : html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                                                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                                              </svg>`
-                                    }
+                                    ${isYou
+                                        ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                                              <circle cx="12" cy="7" r="4" />
+                                          </svg>`
+                                        : html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                          </svg>`}
                                     <span>${speakerLabel}</span>
                                 </div>
                                 <div class="typing-dots-wrap">
@@ -1780,7 +1936,9 @@ export class AssistantView extends LitElement {
                                 </div>
                             </div>
                         </div>
-                        ${subtitle ? html`<div class="bubble-user-meta live-user-meta ${speakerClass}" style="color: #f59e0b;">${subtitle}</div>` : ''}
+                        ${subtitle
+                            ? html`<div class="bubble-user-meta live-user-meta ${speakerClass}" style="color: #f59e0b;">${subtitle}</div>`
+                            : ''}
                     </div>
                 </div>
             `;
@@ -1804,29 +1962,25 @@ export class AssistantView extends LitElement {
                 return html`
                     <div class="speaker-turn-block">
                         <div class="speaker-turn-badge ${speakerClass}">
-                            ${
-                                isYou
-                                    ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                                          <circle cx="12" cy="7" r="4" />
-                                      </svg>`
-                                    : html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                                      </svg>`
-                            }
+                            ${isYou
+                                ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                                      <circle cx="12" cy="7" r="4" />
+                                  </svg>`
+                                : html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                  </svg>`}
                             <span>${speakerLabel}</span>
                         </div>
                         <div class="speaker-turn-text">
-                            ${text}${
-                                isLast
-                                    ? html`<span class="typing-dots-wrap" style="margin-left: 6px; vertical-align: middle;">
-                                          <span class="typing-dot"></span>
-                                          <span class="typing-dot"></span>
-                                          <span class="typing-dot"></span>
-                                      </span>`
-                                    : ''
-                            }
+                            ${text}${isLast
+                                ? html`<span class="typing-dots-wrap" style="margin-left: 6px; vertical-align: middle;">
+                                      <span class="typing-dot"></span>
+                                      <span class="typing-dot"></span>
+                                      <span class="typing-dot"></span>
+                                  </span>`
+                                : ''}
                         </div>
                     </div>
                 `;
@@ -1865,37 +2019,33 @@ export class AssistantView extends LitElement {
             <div class="chat-row user ${speakerClass}">
                 <div class="bubble-user-wrap ${speakerClass}">
                     <div class="bubble-user ${speakerClass}">
-                        ${
-                            matches.length > 0
-                                ? matches.map(m => {
-                                      const rawSpeaker = m[1];
-                                      const text = m[2].trim();
-                                      if (!text) return '';
-                                      const isYou = /^(You|Candidate|Me)$/i.test(rawSpeaker);
-                                      const turnClass = isYou ? 'you' : 'interviewer';
-                                      const speakerLabel = isYou ? 'You' : 'Interviewer';
-                                      return html`
-                                          <div class="speaker-turn-block">
-                                              <div class="speaker-turn-badge ${turnClass}">
-                                                  ${
-                                                      isYou
-                                                          ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                                                                <circle cx="12" cy="7" r="4" />
-                                                            </svg>`
-                                                          : html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                                                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                                                            </svg>`
-                                                  }
-                                                  <span>${speakerLabel}</span>
-                                              </div>
-                                              <div class="speaker-turn-text">${text}</div>
+                        ${matches.length > 0
+                            ? matches.map(m => {
+                                  const rawSpeaker = m[1];
+                                  const text = m[2].trim();
+                                  if (!text) return '';
+                                  const isYou = /^(You|Candidate|Me)$/i.test(rawSpeaker);
+                                  const turnClass = isYou ? 'you' : 'interviewer';
+                                  const speakerLabel = isYou ? 'You' : 'Interviewer';
+                                  return html`
+                                      <div class="speaker-turn-block">
+                                          <div class="speaker-turn-badge ${turnClass}">
+                                              ${isYou
+                                                  ? html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                                                        <circle cx="12" cy="7" r="4" />
+                                                    </svg>`
+                                                  : html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                                    </svg>`}
+                                              <span>${speakerLabel}</span>
                                           </div>
-                                      `;
-                                  })
-                                : html`<div class="bubble-user-content">${promptText}</div>`
-                        }
+                                          <div class="speaker-turn-text">${text}</div>
+                                      </div>
+                                  `;
+                              })
+                            : html`<div class="bubble-user-content">${promptText}</div>`}
                     </div>
                     <div class="bubble-user-meta ${speakerClass}">${this.formatTime(timestamp)}</div>
                 </div>
@@ -1916,26 +2066,24 @@ export class AssistantView extends LitElement {
             <div class="chat-row ai ${speakerClass}">
                 <div class="bubble-ai-wrap ${speakerClass}">
                     <div class="bubble-ai ${speakerClass}">
-                        ${
-                            imageData
-                                ? html`
-                                      <button
-                                          class="screenshot-preview-trigger"
-                                          type="button"
-                                          @click=${() => (this.previewImage = imageData)}
-                                          title="View captured screenshot"
-                                      >
-                                          <img src="${imageData}" class="screenshot-mini-thumb" alt="Thumb" />
-                                          <span class="screenshot-trigger-text">
-                                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                                              </svg>
-                                              View Screen
-                                          </span>
-                                      </button>
-                                  `
-                                : ''
-                        }
+                        ${imageData
+                            ? html`
+                                  <button
+                                      class="screenshot-preview-trigger"
+                                      type="button"
+                                      @click=${() => (this.previewImage = imageData)}
+                                      title="View captured screenshot"
+                                  >
+                                      <img src="${imageData}" class="screenshot-mini-thumb" alt="Thumb" />
+                                      <span class="screenshot-trigger-text">
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                                          </svg>
+                                          View Screen
+                                      </span>
+                                  </button>
+                              `
+                            : ''}
                         <div class="bubble-ai-content" .innerHTML=${renderedMarkdown}></div>
                     </div>
                     <div class="bubble-ai-meta ${speakerClass}">${this.formatTime(timestamp)}</div>
@@ -1951,21 +2099,19 @@ export class AssistantView extends LitElement {
 
         return html`
             <div class="chat-container" id="chatContainer" @click=${this.handleContentClick}>
-                ${
-                    !hasResponses && !isListening
-                        ? html`
-                              <div class="chat-empty">
-                                  <div class="chat-empty-listening">
-                                      <div class="listening-radar">
-                                          <div class="listening-radar-ring"></div>
-                                          <div class="listening-radar-dot"></div>
-                                      </div>
-                                      <div>Listening in ${profileNames[this.selectedProfile] || 'Session'} mode...</div>
+                ${!hasResponses && !isListening
+                    ? html`
+                          <div class="chat-empty">
+                              <div class="chat-empty-listening">
+                                  <div class="listening-radar">
+                                      <div class="listening-radar-ring"></div>
+                                      <div class="listening-radar-dot"></div>
                                   </div>
+                                  <div>Listening in ${profileNames[this.selectedProfile] || 'Session'} mode...</div>
                               </div>
-                          `
-                        : ''
-                }
+                          </div>
+                      `
+                    : ''}
                 ${this.responses.map(item => {
                     if (item && item.type === 'status_event') {
                         if (item.eventType === 'profile_change') {
@@ -1986,18 +2132,16 @@ export class AssistantView extends LitElement {
                         return html`
                             <div class="chat-event-row">
                                 <div class="chat-event-badge ${item.isMuted ? 'muted' : 'unmuted'}">
-                                    ${
-                                        item.isMuted
-                                            ? html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <line x1="1" y1="1" x2="23" y2="23" />
-                                                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                                                  <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-                                              </svg>`
-                                            : html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                              </svg>`
-                                    }
+                                    ${item.isMuted
+                                        ? html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                              <line x1="1" y1="1" x2="23" y2="23" />
+                                              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                                              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+                                          </svg>`
+                                        : html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                          </svg>`}
                                     <span>${item.text}</span>
                                     <span class="chat-event-time">${this.formatTime(item.timestamp)}</span>
                                 </div>
@@ -2014,33 +2158,31 @@ export class AssistantView extends LitElement {
                 ${this.renderLiveIndicator()}
             </div>
 
-            ${
-                this.isScrolledUp
-                    ? html`
-                          <button
-                              class="scroll-bottom-btn ${this.hasNewMessagesWhileScrolled ? 'has-new' : ''}"
-                              @click=${() => this.scrollToBottomSmooth()}
-                              title="Jump to latest message"
+            ${this.isScrolledUp
+                ? html`
+                      <button
+                          class="scroll-bottom-btn ${this.hasNewMessagesWhileScrolled ? 'has-new' : ''}"
+                          @click=${() => this.scrollToBottomSmooth()}
+                          title="Jump to latest message"
+                      >
+                          <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.5"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
                           >
-                              <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  stroke-width="2.5"
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                              >
-                                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                                  <polyline points="19 12 12 19 5 12"></polyline>
-                              </svg>
-                              ${this.hasNewMessagesWhileScrolled ? html`<span class="scroll-new-badge"></span>` : ''}
-                          </button>
-                      `
-                    : ''
-            }
-            ${this.renderAttachmentControls()}
+                              <line x1="12" y1="5" x2="12" y2="19"></line>
+                              <polyline points="19 12 12 19 5 12"></polyline>
+                          </svg>
+                          ${this.hasNewMessagesWhileScrolled ? html`<span class="scroll-new-badge"></span>` : ''}
+                      </button>
+                  `
+                : ''}
+            ${this.renderCoachPanel()} ${this.renderAttachmentControls()}
 
             <div class="input-bar">
                 <div class="session-mode-pill-wrap">
@@ -2050,22 +2192,38 @@ export class AssistantView extends LitElement {
                         aria-haspopup="menu"
                         aria-expanded=${this.showModeMenu ? 'true' : 'false'}
                         aria-controls="session-mode-menu"
-                        @click=${() => this.showModeMenu ? this._closeModeMenu() : this._openModeMenu()}
+                        @click=${() => (this.showModeMenu ? this._closeModeMenu() : this._openModeMenu())}
                         @keydown=${this._handleModeTriggerKeydown}
                         title="Switch Session Mode"
-                    >${this._modeOptions().find(option => option.value === this.selectedProfile)?.label || 'Mode'}</button>
-                    ${this.showModeMenu ? html`
-                        <div id="session-mode-menu" class="session-mode-menu" role="menu" aria-label="Session mode"
-                            @keydown=${this._handleModeMenuKeydown} @focusout=${this._handleModeFocusOut}>
-                            ${this._modeOptions().map(option => html`
-                                <button type="button" role="menuitemradio" tabindex="-1"
-                                    aria-checked=${option.value === this.selectedProfile ? 'true' : 'false'}
-                                    @click=${() => this._handleProfileSelect(option.value)}>
-                                    <span aria-hidden="true">${option.value === this.selectedProfile ? '✓' : ''}</span>${option.label}
-                                </button>
-                            `)}
-                        </div>
-                    ` : ''}
+                    >
+                        ${this._modeOptions().find(option => option.value === this.selectedProfile)?.label || 'Mode'}
+                    </button>
+                    ${this.showModeMenu
+                        ? html`
+                              <div
+                                  id="session-mode-menu"
+                                  class="session-mode-menu"
+                                  role="menu"
+                                  aria-label="Session mode"
+                                  @keydown=${this._handleModeMenuKeydown}
+                                  @focusout=${this._handleModeFocusOut}
+                              >
+                                  ${this._modeOptions().map(
+                                      option => html`
+                                          <button
+                                              type="button"
+                                              role="menuitemradio"
+                                              tabindex="-1"
+                                              aria-checked=${option.value === this.selectedProfile ? 'true' : 'false'}
+                                              @click=${() => this._handleProfileSelect(option.value)}
+                                          >
+                                              <span aria-hidden="true">${option.value === this.selectedProfile ? '✓' : ''}</span>${option.label}
+                                          </button>
+                                      `
+                                  )}
+                              </div>
+                          `
+                        : ''}
                 </div>
                 <div class="input-bar-inner">
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
@@ -2108,28 +2266,26 @@ export class AssistantView extends LitElement {
                 </button>
             </div>
 
-            ${
-                this.previewImage
-                    ? html`
-                          <div class="image-modal-overlay" @click=${() => (this.previewImage = null)}>
-                              <div class="image-modal-dialog" @click=${e => e.stopPropagation()}>
-                                  <div class="image-modal-header">
-                                      <span>Captured Screenshot</span>
-                                      <button class="image-modal-close" @click=${() => (this.previewImage = null)}>
-                                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                              <line x1="18" y1="6" x2="6" y2="18" />
-                                              <line x1="6" y1="6" x2="18" y2="18" />
-                                          </svg>
-                                      </button>
-                                  </div>
-                                  <div class="image-modal-body">
-                                      <img src="${this.previewImage}" alt="Full Screenshot" />
-                                  </div>
+            ${this.previewImage
+                ? html`
+                      <div class="image-modal-overlay" @click=${() => (this.previewImage = null)}>
+                          <div class="image-modal-dialog" @click=${e => e.stopPropagation()}>
+                              <div class="image-modal-header">
+                                  <span>Captured Screenshot</span>
+                                  <button class="image-modal-close" @click=${() => (this.previewImage = null)}>
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                          <line x1="18" y1="6" x2="6" y2="18" />
+                                          <line x1="6" y1="6" x2="18" y2="18" />
+                                      </svg>
+                                  </button>
+                              </div>
+                              <div class="image-modal-body">
+                                  <img src="${this.previewImage}" alt="Full Screenshot" />
                               </div>
                           </div>
-                      `
-                    : ''
-            }
+                      </div>
+                  `
+                : ''}
         `;
     }
 
@@ -2150,7 +2306,15 @@ export class AssistantView extends LitElement {
                         const imgSrc = item.path ? `file://${item.path}` : '';
                         return html`
                             <div class="attachment-pill">
-                                ${imgSrc ? html`<img src="${imgSrc}" class="attachment-thumb" alt="Thumb" @click=${() => (this.previewImage = imgSrc)} title="Click to preview screenshot" />` : ''}
+                                ${imgSrc
+                                    ? html`<img
+                                          src="${imgSrc}"
+                                          class="attachment-thumb"
+                                          alt="Thumb"
+                                          @click=${() => (this.previewImage = imgSrc)}
+                                          title="Click to preview screenshot"
+                                      />`
+                                    : ''}
                                 <span class="attachment-label">${label}</span>
                                 <button
                                     class="attachment-remove-btn"
@@ -2167,83 +2331,75 @@ export class AssistantView extends LitElement {
                 </div>
 
                 <div class="attachment-actions">
-                    ${
-                        allScreenshots.length >= 2
-                            ? html`
-                                  <button
-                                      class="attachment-action-btn"
-                                      type="button"
-                                      @click=${() => this.handleComparePrevious()}
-                                      title="Select current and immediately previous captures for comparison"
-                                  >
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
-                                      </svg>
-                                      Compare with previous
-                                  </button>
-                              `
-                            : ''
-                    }
-                    ${
-                        allScreenshots.length > 0
-                            ? html`
-                                  <button
-                                      class="attachment-action-btn"
-                                      type="button"
-                                      @click=${() => this.toggleHistoryPicker()}
-                                      title="Choose a screenshot from session history"
-                                  >
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                          <circle cx="8.5" cy="8.5" r="1.5" />
-                                          <polyline points="21 15 16 10 5 21" />
-                                      </svg>
-                                      History (${allScreenshots.length})
-                                  </button>
-                              `
-                            : ''
-                    }
-                    ${
-                        hasActive
-                            ? html`
-                                  <button
-                                      class="attachment-action-btn"
-                                      type="button"
-                                      @click=${() => this.handleClearAttachments()}
-                                      title="Clear all active attachments"
-                                  >
-                                      Clear
-                                  </button>
-                              `
-                            : ''
-                    }
+                    ${allScreenshots.length >= 2
+                        ? html`
+                              <button
+                                  class="attachment-action-btn"
+                                  type="button"
+                                  @click=${() => this.handleComparePrevious()}
+                                  title="Select current and immediately previous captures for comparison"
+                              >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+                                  </svg>
+                                  Compare with previous
+                              </button>
+                          `
+                        : ''}
+                    ${allScreenshots.length > 0
+                        ? html`
+                              <button
+                                  class="attachment-action-btn"
+                                  type="button"
+                                  @click=${() => this.toggleHistoryPicker()}
+                                  title="Choose a screenshot from session history"
+                              >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                      <circle cx="8.5" cy="8.5" r="1.5" />
+                                      <polyline points="21 15 16 10 5 21" />
+                                  </svg>
+                                  History (${allScreenshots.length})
+                              </button>
+                          `
+                        : ''}
+                    ${hasActive
+                        ? html`
+                              <button
+                                  class="attachment-action-btn"
+                                  type="button"
+                                  @click=${() => this.handleClearAttachments()}
+                                  title="Clear all active attachments"
+                              >
+                                  Clear
+                              </button>
+                          `
+                        : ''}
                 </div>
 
-                ${
-                    this.showHistoryPicker
-                        ? html`
-                              <div class="history-picker-popover" @click=${e => e.stopPropagation()}>
-                                  <div class="history-picker-title">Session Screenshots</div>
-                                  ${allScreenshots.map(item => {
-                                      const isSelected = (state.activeAttachmentIds || []).includes(item.id);
-                                      const imgSrc = item.path ? `file://${item.path}` : '';
-                                      return html`
-                                          <div
-                                              class="history-picker-item ${isSelected ? 'selected' : ''}"
-                                              @click=${() => this.handleSelectHistoryAttachment(item.id)}
-                                          >
-                                              ${imgSrc ? html`<img src="${imgSrc}" class="history-picker-thumb" alt="History thumb" />` : ''}
-                                              <div class="history-picker-info">
-                                                  <span>${item.id}</span>
-                                                  <span class="history-picker-time">${this.formatTime(item.timestamp)}</span>
-                                              </div>
+                ${this.showHistoryPicker
+                    ? html`
+                          <div class="history-picker-popover" @click=${e => e.stopPropagation()}>
+                              <div class="history-picker-title">Session Screenshots</div>
+                              ${allScreenshots.map(item => {
+                                  const isSelected = (state.activeAttachmentIds || []).includes(item.id);
+                                  const imgSrc = item.path ? `file://${item.path}` : '';
+                                  return html`
+                                      <div
+                                          class="history-picker-item ${isSelected ? 'selected' : ''}"
+                                          @click=${() => this.handleSelectHistoryAttachment(item.id)}
+                                      >
+                                          ${imgSrc ? html`<img src="${imgSrc}" class="history-picker-thumb" alt="History thumb" />` : ''}
+                                          <div class="history-picker-info">
+                                              <span>${item.id}</span>
+                                              <span class="history-picker-time">${this.formatTime(item.timestamp)}</span>
                                           </div>
-                                      `;
-                                  })}
-                              </div>
-                          `
-                        : ''
-                }
+                                      </div>
+                                  `;
+                              })}
+                          </div>
+                      `
+                    : ''}
             </div>
         `;
     }

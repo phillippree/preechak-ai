@@ -11,13 +11,26 @@ function harness({
     preferences = {},
     mockFs = null,
     mockWhisper = null,
+    coachResponse = async () => ({
+        text: JSON.stringify({
+            action: 'quiet',
+            newProblem: false,
+            contribution: 'context',
+            summary: 'Current problem',
+            problem: { title: 'Current problem' },
+            output: '',
+        }),
+    }),
+    streamError = null,
 } = {}) {
     const events = [],
         saved = [],
         savedAnalyses = [],
         requests = [],
         summarizeRequests = [],
-        geminiTranscribeRequests = [];
+        geminiTranscribeRequests = [],
+        transcriptionConnections = [],
+        coachRequests = [];
 
     const effectiveFs = mockFs || fs;
     const prefs = { ...preferences };
@@ -30,6 +43,26 @@ function harness({
             if (name === 'node:fs' || name === 'fs') return effectiveFs;
             if (name === 'node:path' || name === 'path') return path;
             if (name === './llmRequestLogger') return { logLlmRequest: (_, payload) => payload };
+            if (name === './interview-coach') return require('../src/utils/interview-coach');
+            if (name === './gemini-transcription')
+                return {
+                    GeminiTranscription: class {
+                        constructor(options) {
+                            this.options = options;
+                            this.audio = [];
+                            transcriptionConnections.push(this);
+                        }
+                        async start() {
+                            if (streamError) throw new Error(streamError);
+                        }
+                        send(source, pcm) {
+                            this.audio.push({ source, pcm });
+                        }
+                        close() {
+                            this.closed = true;
+                        }
+                    },
+                };
             if (name === './speech-segmenter') return require('../src/utils/speech-segmenter');
             if (name === './whisper-runtime')
                 return {
@@ -44,6 +77,10 @@ function harness({
                     GoogleGenAI: class {
                         models = {
                             generateContent: async request => {
+                                if (request.config?.responseMimeType === 'application/json') {
+                                    coachRequests.push(request);
+                                    return coachResponse(request);
+                                }
                                 const firstText = request?.contents?.[0]?.parts?.[0]?.text || '';
                                 if (firstText.includes('conversation summarizer')) {
                                     summarizeRequests.push(request);
@@ -92,6 +129,9 @@ function harness({
         requests,
         summarizeRequests,
         geminiTranscribeRequests,
+        transcriptionConnections,
+        coachRequests,
+        getCoach: () => vm.runInContext('coach', context),
     };
 }
 
@@ -753,4 +793,110 @@ test('mic and system speech buffers close independently with their own labels', 
     await settle();
     assert.equal(h.saved.length, 2);
     assert.match(h.saved[1][0], /^\[Interviewer\]:/);
+});
+
+test('conversation coach starts independent Gemini streams, bypasses Whisper, and does not block audio on coaching', async t => {
+    const h = harness({ preferences: { conversationCoaching: true, audioMode: 'both', geminiHttpTranscriptionMode: 'whisper' } });
+    t.after(() => h.api.closeGeminiHttpSession());
+    assert.equal(await h.api.initializeGeminiHttpSession('test'), true);
+    const streams = h.transcriptionConnections[0];
+    assert.deepEqual(Array.from(streams.options.sources), ['You', 'Interviewer']);
+    assert.equal(h.api.getTranscriptionMode(), 'gemini-streaming');
+    h.api.processHttpAudioChunk(audio, 'You');
+    h.api.processHttpAudioChunk(audio, 'Interviewer');
+    assert.deepEqual(
+        streams.audio.map(v => v.source),
+        ['You', 'Interviewer']
+    );
+    assert.equal(h.geminiTranscribeRequests.length, 0);
+    streams.options.onTranscript({ id: 'mic-1', source: 'You', text: 'Can edits happen offline?', final: true, startedAt: 1000 });
+    await h.getCoach().evaluate();
+    assert.equal(h.coachRequests.length, 1);
+    assert.equal(h.requests.length, 0);
+});
+
+test('coached snapshots include confirmed speech and two related images without resetting the active problem', async t => {
+    const h = harness({
+        preferences: { conversationCoaching: true, audioMode: 'both' },
+        coachResponse: async () => ({
+            text: JSON.stringify({
+                action: 'solutions',
+                newProblem: false,
+                contribution: 'screen',
+                summary: 'Two sum. Constant space.',
+                problem: { title: 'Two sum', requirements: ['Constant space'] },
+                output: 'Basic: scan pairs. Optimized: two pointers on sorted input.',
+            }),
+        }),
+    });
+    t.after(() => h.api.closeGeminiHttpSession());
+    await h.api.initializeGeminiHttpSession('test');
+    h.transcriptionConnections[0].options.onTranscript({
+        id: 'sys-1',
+        source: 'Interviewer',
+        text: 'Use constant space.',
+        final: true,
+        startedAt: 1000,
+    });
+    const first = await h.api.handleHttpScreenshot('statementData', 'Give two solutions', '/fake/statement.jpg');
+    const second = await h.api.handleHttpScreenshot('codeData', 'Review the current code', '/fake/code.jpg');
+    assert.equal(first.success, true);
+    assert.equal(second.success, true);
+    const request = h.coachRequests.at(-1);
+    assert.equal(request.contents[0].parts.length, 3);
+    const context = JSON.parse(request.contents[0].parts[0].text);
+    assert.ok(context.recentConversation.some(turn => turn.text === 'Use constant space.'));
+    assert.equal(context.request.screenshotPreferences, 'Review the current code');
+    assert.equal(h.api.getCoachState().problemId, 1);
+    assert.equal(h.savedAnalyses.length, 2);
+    assert.equal(h.api.startNewProblem().success, true);
+    assert.equal(h.api.getCoachState().problemId, 2);
+    assert.equal(h.api.getAttachmentsState().activeAttachmentIds.length, 0);
+});
+
+test('failed live transcription setup fails the session without silently selecting another provider', async () => {
+    const h = harness({ preferences: { conversationCoaching: true }, streamError: 'Model access denied' });
+    assert.equal(await h.api.initializeGeminiHttpSession('test'), false);
+    assert.equal(h.api.isGeminiHttpActive(), false);
+    assert.equal(h.transcriptionConnections[0].closed, true);
+    assert.ok(h.events.some(event => event[0] === 'update-status' && event[1].includes('Model access denied')));
+    assert.equal(h.requests.length, 0);
+});
+
+test('closing a coaching session rejects late transcript callbacks', async () => {
+    const h = harness({ preferences: { conversationCoaching: true } });
+    await h.api.initializeGeminiHttpSession('test');
+    const connection = h.transcriptionConnections[0];
+    h.api.closeGeminiHttpSession();
+    connection.options.onTranscript({ id: 'late', source: 'You', text: 'Old transcript', final: true });
+    assert.equal(h.saved.length, 0);
+    assert.equal(h.api.getCoachState().active, false);
+});
+
+test('explicit coached follow-ups retain the images selected at submission time', async t => {
+    const h = harness({
+        preferences: { conversationCoaching: true },
+        coachResponse: async () => ({
+            text: JSON.stringify({
+                action: 'explain',
+                newProblem: false,
+                contribution: 'question',
+                summary: 'Current problem',
+                problem: { title: 'Current problem' },
+                output: 'Explanation of the selected image.',
+            }),
+        }),
+    });
+    t.after(() => h.api.closeGeminiHttpSession());
+    await h.api.initializeGeminiHttpSession('test');
+    h.api.registerScreenshot({ id: 'first', base64Data: 'first-data' });
+    const pending = h.api.sendTextToGeminiHttp('Explain this code');
+    h.api.registerScreenshot({ id: 'later', base64Data: 'later-data' });
+    await h.getCoach().evaluate();
+    assert.equal((await pending).success, true);
+    const context = JSON.parse(h.coachRequests[0].contents[0].parts[0].text);
+    assert.deepEqual(
+        context.images.map(image => image.id),
+        ['first']
+    );
 });
