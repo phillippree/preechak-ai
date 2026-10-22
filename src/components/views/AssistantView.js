@@ -739,6 +739,45 @@ export class AssistantView extends LitElement {
                 color: var(--text-secondary);
                 font-size: var(--font-size-xs);
             }
+            :host(.stealth-mode) *,
+            .coach-panel,
+            .coach-panel *,
+            .protected-coach-response,
+            .protected-coach-response * {
+                cursor: default !important;
+            }
+            .capture-controls {
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 8px;
+                margin: 6px 0;
+            }
+            .capture-buttons {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                margin-top: 6px;
+            }
+            .capture-buttons button {
+                background: var(--bg-elevated);
+                color: var(--text-primary);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 5px 8px;
+            }
+            .capture-buttons button:disabled {
+                opacity: 0.6;
+            }
+            .capture-buttons button:focus-visible {
+                outline: 1px solid var(--accent);
+            }
+            .capture-thumb {
+                max-width: 180px;
+                max-height: 90px;
+                display: block;
+                margin-top: 6px;
+                object-fit: contain;
+            }
             .coach-sources meter {
                 width: 60px;
                 height: 10px;
@@ -1251,7 +1290,9 @@ export class AssistantView extends LitElement {
         showHistoryPicker: { type: Boolean, state: true },
         showModeMenu: { state: true },
         coachState: { state: true },
+        stealthMode: { type: Boolean },
         audioLevels: { state: true },
+        captureActionError: { state: true },
     };
 
     constructor() {
@@ -1276,7 +1317,10 @@ export class AssistantView extends LitElement {
         this.showHistoryPicker = false;
         this.showModeMenu = false;
         this.coachState = { active: false };
+        this.stealthMode = true;
+        this._stealthTitles = new Map();
         this.audioLevels = {};
+        this.captureActionError = '';
     }
 
     _modeOptions() {
@@ -1470,7 +1514,10 @@ export class AssistantView extends LitElement {
             this._coachEventReceived = false;
             this._coachStateHandler = (_, state) => {
                 this._coachEventReceived = true;
+                const previousCapture = this.coachState?.capture;
+                if (previousCapture?.id !== state.capture?.id) this.captureActionError = '';
                 this.coachState = state;
+                if (state.capture?.needsChoice || (previousCapture?.pending && !state.capture?.pending) || !state.active) this.isAnalyzing = false;
             };
             ipcRenderer.on('coach-state', this._coachStateHandler);
             ipcRenderer
@@ -1709,9 +1756,27 @@ export class AssistantView extends LitElement {
         }
     }
 
+    applyStealthPresentation() {
+        this.classList.toggle('stealth-mode', this.stealthMode);
+        if (this.stealthMode) {
+            for (const element of this.shadowRoot.querySelectorAll('[title]')) {
+                this._stealthTitles.set(element, element.getAttribute('title'));
+                element.removeAttribute('title');
+            }
+            for (const element of this._stealthTitles.keys()) if (!element.isConnected) this._stealthTitles.delete(element);
+        } else {
+            for (const [element, title] of this._stealthTitles) if (element.isConnected) element.setAttribute('title', title);
+            this._stealthTitles.clear();
+        }
+        if (this.stealthMode) {
+            for (const title of this.shadowRoot.querySelectorAll('svg title')) title.remove();
+        }
+    }
+
     updated(changedProperties) {
         super.updated(changedProperties);
-        renderMermaidDiagrams(this.shadowRoot);
+        this.applyStealthPresentation();
+        renderMermaidDiagrams(this.shadowRoot).then(() => this.applyStealthPresentation());
         if (changedProperties.has('coachState')) {
             const captions = this.shadowRoot.querySelector('.coach-captions');
             if (captions) captions.scrollTop = captions.scrollHeight;
@@ -1768,6 +1833,75 @@ export class AssistantView extends LitElement {
         return 'you';
     }
 
+    async handleCaptureAction(captureId, action) {
+        if (!window.require) return;
+        this.captureActionError = '';
+        try {
+            const result = await window.require('electron').ipcRenderer.invoke('coach:capture-action', { captureId, action });
+            if (!result?.success) this.captureActionError = result?.error || 'Could not process this capture. Please try again.';
+        } catch (error) {
+            this.captureActionError = error.message;
+        }
+    }
+
+    renderProtectedMarkdown(content) {
+        const template = document.createElement('template');
+        template.innerHTML = this.renderMarkdown(content);
+        // Native title tooltips and external links must not escape the protected view.
+        for (const element of template.content.querySelectorAll('[title], a')) {
+            element.removeAttribute('title');
+            if (element.tagName === 'A') {
+                element.removeAttribute('href');
+                element.removeAttribute('target');
+            }
+        }
+        return template.innerHTML;
+    }
+
+    renderCaptureControls() {
+        const capture = this.coachState?.capture;
+        if (!capture) return '';
+        const labels = {
+            analyzing: 'Analyzing screen',
+            ambiguous: 'Choose what to do with this screen',
+            new_problem: 'New problem',
+            review_code: 'Reviewing your code',
+            continue_code: 'Helping you continue',
+            update_requirements: 'Updated requirements',
+            missing_context: 'More context needed',
+        };
+        return html`
+            <div class="capture-controls" aria-label="Screen analysis controls">
+                <strong>${labels[capture.intent] || 'Screen analysis'}</strong>
+                ${capture.reason ? html`<div>${capture.reason}</div>` : ''}
+                ${capture.needsChoice && capture.previewPath
+                    ? html`<img class="capture-thumb" src=${capture.previewPath} alt="Captured screen awaiting a choice" draggable="false" />`
+                    : ''}
+                <div class="capture-buttons">
+                    ${[
+                        ['new_problem', 'New problem'],
+                        ['review_code', 'Review my code'],
+                        ['continue_code', 'Help me continue'],
+                        ...(!capture.needsChoice
+                            ? [
+                                  ['full_code', 'Show full corrected code'],
+                                  ['explain_visual', 'Explain visually'],
+                              ]
+                            : []),
+                    ].map(
+                        ([action, label]) => html`
+                            <button type="button" ?disabled=${capture.pending} @click=${() => this.handleCaptureAction(capture.id, action)}>
+                                ${label}
+                            </button>
+                        `
+                    )}
+                </div>
+                ${capture.pending ? html`<span role="status">Processing your selection…</span>` : ''}
+                ${this.captureActionError ? html`<div role="status">${this.captureActionError}</div>` : ''}
+            </div>
+        `;
+    }
+
     renderCoachPanel() {
         const state = this.coachState;
         if (!state?.active) return '';
@@ -1796,10 +1930,11 @@ export class AssistantView extends LitElement {
                         Update solutions
                     </button>
                 </div>
+                ${this.renderCaptureControls()}
                 <div class="coach-sources">
                     ${Object.entries(state.sources || {}).map(([source, status]) => {
                         const muted = source === 'You' ? this.isMicMuted : this.isSpeakerMuted;
-                        return html`<span title=${status.message || ''}
+                        return html`<span
                             >${source}: ${muted ? 'muted' : status.status}
                             ${this.audioLevels[source]
                                 ? html`<meter
@@ -1807,9 +1942,6 @@ export class AssistantView extends LitElement {
                                           max="0.2"
                                           value=${muted ? 0 : this.audioLevels[source].rms}
                                           aria-label=${`${source} input level`}
-                                          title=${this.audioLevels[source].settings
-                                              ? `Noise suppression: ${this.audioLevels[source].settings.noiseSuppression ?? 'unknown'}; echo cancellation: ${this.audioLevels[source].settings.echoCancellation ?? 'unknown'}; auto gain: ${this.audioLevels[source].settings.autoGainControl ?? 'unknown'}`
-                                              : 'Input level'}
                                       ></meter>
                                       ${!muted && this.audioLevels[source].clipped ? 'Input clipping' : ''}`
                                 : ''}
@@ -1829,7 +1961,7 @@ export class AssistantView extends LitElement {
                     ? html`<div
                           class="coach-card bubble-ai-content"
                           aria-live="polite"
-                          .innerHTML=${this.renderMarkdown(state.card)}
+                          .innerHTML=${this.renderProtectedMarkdown(state.card)}
                           @click=${this.handleContentClick}
                       ></div>`
                     : ''}
@@ -2057,13 +2189,13 @@ export class AssistantView extends LitElement {
         const text = typeof item === 'object' && item !== null ? item.text || '' : item || '';
         if (!text.trim()) return '';
 
-        const renderedMarkdown = this.renderMarkdown(text);
+        const renderedMarkdown = this.coachState?.active ? this.renderProtectedMarkdown(text) : this.renderMarkdown(text);
         const imageData = typeof item === 'object' && item !== null ? item.image || item.imagePath || null : null;
         const timestamp = typeof item === 'object' && item !== null ? item.timestamp : null;
         const speakerClass = this.getTurnSpeaker(null, item);
 
         return html`
-            <div class="chat-row ai ${speakerClass}">
+            <div class="chat-row ai ${speakerClass} ${this.coachState?.active ? 'protected-coach-response' : ''}">
                 <div class="bubble-ai-wrap ${speakerClass}">
                     <div class="bubble-ai ${speakerClass}">
                         ${imageData

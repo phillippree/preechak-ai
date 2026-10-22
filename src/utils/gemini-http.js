@@ -945,9 +945,14 @@ async function handleHttpScreenshot(base64Data, prompt, savedImagePath = null) {
     if (coach) {
         const sessionCoach = coach;
         const task =
-            'Analyze the attached screen in the current conversation. For a coding problem, explain and provide straightforward and optimized solutions. Use confirmed spoken constraints; do not start a new problem merely because a screenshot arrived.';
-        const result = await sessionCoach.request(task, { screenshotPrompt: prompt || '', imageIds: [...activeAttachments], kind: 'screen-request' });
-        if (result.success && coach === sessionCoach)
+            'Determine whether the newest screen shows a new problem, my current code to review, unfinished work, or updated requirements. Use the active problem and conversation. Review my implementation on its own merits. Ask for a mouse choice if uncertain; do not automatically regenerate two solutions.';
+        const result = await sessionCoach.request(task, {
+            screenshotPrompt: prompt || '',
+            imageIds: [...activeAttachments],
+            kind: 'screen-request',
+            previewPath: savedImagePath,
+        });
+        if (result.success && result.text && coach === sessionCoach)
             saveScreenAnalysis(prompt || task, result.text, result.model, `data:image/jpeg;base64,${base64Data}`, savedImagePath);
         return { ...result, imageId: attachmentEntry.id, imagePath: savedImagePath };
     }
@@ -1075,6 +1080,27 @@ module.exports = {
         coach.sources[event.source] = { ...coach.sources[event.source], captureStatus: event.status, captureMessage: event.message };
         coach.publish();
         return { success: true };
+    },
+    captureAction: async (captureId, action) => {
+        if (!coach) return { success: false, error: 'Conversation Coach is not active' };
+        const sessionCoach = coach;
+        const capture = sessionCoach.captures.get(captureId);
+        const result = await sessionCoach.captureAction(captureId, action);
+        if (result.success && result.text && coach === sessionCoach && capture) {
+            try {
+                const imageId = capture.imageIds.at(-1);
+                saveScreenAnalysis(
+                    action,
+                    result.text,
+                    result.model,
+                    imageId ? `data:image/jpeg;base64,${getAttachmentData(imageId)}` : null,
+                    capture.previewPath
+                );
+            } catch (error) {
+                console.warn('Could not save capture action image:', error.message);
+            }
+        }
+        return result;
     },
     getCoachState: () => coach?.lastState || { active: false },
     startNewProblem: () => {

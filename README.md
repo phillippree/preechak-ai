@@ -313,6 +313,8 @@ On macOS/Linux, use `LLM_LOG_REQUESTS=0 npm start` to disable these request logs
 
 Gemini API sessions offer **Conversation Coach** under Home → Gemini API & Connection. It streams microphone and system audio separately, displays live captions, and uses the shared interview context to explain, suggest a brief next step, revise solutions, or stay quiet. Screen analysis combines the current problem and conversation with selected images, providing straightforward and optimized coding solutions when appropriate.
 
+Analyze Screen now distinguishes new problems, code reviews, and unfinished work. New problems get chalkboard walkthroughs and two complete solutions; reviews provide focused corrections. Ambiguous captures offer in-window mouse choices, with full corrected code available on request.
+
 Choose **Both Speaker and Microphone** under Customize → Audio Input to capture both sides; existing saved source choices are respected. The feature uses Gemini Live transcription plus the configured coaching model and requires access to both. It does not route coaching through Groq. Disable Conversation Coach to use the legacy transport and transcription options. See [Conversation Coach](documents/conversation-coach.md) for behavior, storage, limitations, and tests.
 
 ## Development and packaging

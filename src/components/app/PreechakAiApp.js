@@ -9,6 +9,10 @@ import { AICustomizeView } from '../views/AICustomizeView.js';
 
 export class PreechakAiApp extends LitElement {
     static styles = css`
+        :host(.stealth-live) * {
+            cursor: default !important;
+        }
+
         * {
             box-sizing: border-box;
             font-family: var(--font);
@@ -515,6 +519,7 @@ export class PreechakAiApp extends LitElement {
         this._localAiDownloadProgress = { active: false, label: '', percentage: null };
         this._localVersion = '';
         this._stealthMode = true;
+        this._protectedTitles = new Map();
         this._isMicMuted = false;
         this._isSpeakerMuted = false;
         this.liveTranscription = null;
@@ -966,6 +971,18 @@ export class PreechakAiApp extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
+        const protectedLive = this._stealthMode && this.currentView === 'assistant';
+        this.classList.toggle('stealth-live', protectedLive);
+        if (protectedLive) {
+            for (const element of this.shadowRoot.querySelectorAll('[title]')) {
+                this._protectedTitles.set(element, element.getAttribute('title'));
+                element.removeAttribute('title');
+            }
+            for (const element of this._protectedTitles.keys()) if (!element.isConnected) this._protectedTitles.delete(element);
+        } else {
+            for (const [element, title] of this._protectedTitles) if (element.isConnected) element.setAttribute('title', title);
+            this._protectedTitles.clear();
+        }
 
         if (changedProperties.has('currentView') && window.require) {
             const { ipcRenderer } = window.require('electron');
@@ -1039,6 +1056,7 @@ export class PreechakAiApp extends LitElement {
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
                         .sessionActive=${this.sessionActive}
+                        .stealthMode=${this._stealthMode}
                         .liveTranscription=${this.liveTranscription}
                         .liveThinking=${this.liveThinking}
                         .statusText=${this.statusText}

@@ -820,7 +820,9 @@ test('coached snapshots include confirmed speech and two related images without 
         preferences: { conversationCoaching: true, audioMode: 'both' },
         coachResponse: async () => ({
             text: JSON.stringify({
-                action: 'solutions',
+                action: 'patch',
+                captureIntent: 'review_code',
+                captureReason: 'Current implementation of the active problem.',
                 newProblem: false,
                 contribution: 'screen',
                 summary: 'Two sum. Constant space.',
@@ -899,4 +901,33 @@ test('explicit coached follow-ups retain the images selected at submission time'
         context.images.map(image => image.id),
         ['first']
     );
+});
+
+test('ambiguous captures support mouse resolution and retain their screenshot in history', async t => {
+    let evaluations = 0;
+    const h = harness({
+        preferences: { conversationCoaching: true },
+        coachResponse: async () => ({
+            text: JSON.stringify({
+                action: ++evaluations === 1 ? 'wait' : 'patch',
+                newProblem: false,
+                captureIntent: evaluations === 1 ? 'ambiguous' : 'review_code',
+                captureReason: 'Partial code needs intent clarification.',
+                contribution: 'screen',
+                summary: 'Multiply strings',
+                problem: { title: 'Multiply strings' },
+                output: evaluations === 1 ? '' : 'Append the remaining carry after the loop.',
+            }),
+        }),
+    });
+    t.after(() => h.api.closeGeminiHttpSession());
+    await h.api.initializeGeminiHttpSession('test');
+    const capture = await h.api.handleHttpScreenshot('codePixels', 'Give two complete solutions', '/fake/code.jpg');
+    assert.equal(capture.needsChoice, true);
+    assert.equal(h.savedAnalyses.length, 0);
+    const result = await h.api.captureAction(h.api.getCoachState().capture.id, 'review_code');
+    assert.equal(result.success, true);
+    assert.equal(h.savedAnalyses.length, 1);
+    assert.equal(h.savedAnalyses[0][3], 'data:image/jpeg;base64,codePixels');
+    assert.equal(h.savedAnalyses[0][4], '/fake/code.jpg');
 });

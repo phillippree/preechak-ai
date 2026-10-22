@@ -222,3 +222,142 @@ test('a coaching timeout ends the request and shows a retryable error', async t 
     assert.match(h.coach.card, /Please retry/);
     assert.equal(h.coach.busy, false);
 });
+
+test('ambiguous captures wait for a mouse choice without modifying the current problem or producing code', async t => {
+    const h = harness(t, async () => reply('wait', '', { captureIntent: 'ambiguous', captureReason: 'Only a signature is visible.' }));
+    h.coach.problem.title = 'Multiply strings';
+    h.coach.problem.requirements = ['No full integer conversion'];
+    const pending = h.coach.request('Analyze this screen', { kind: 'screen-request', imageIds: ['code'], previewPath: '/fake/code.jpg' });
+    await h.coach.evaluate();
+    assert.equal((await pending).needsChoice, true);
+    assert.equal(h.coach.problem.title, 'Multiply strings');
+    assert.equal(h.coach.solutions.length, 0);
+    assert.equal(h.coach.lastState.capture.needsChoice, true);
+    assert.equal(h.coach.lastState.capture.previewPath, '/fake/code.jpg');
+    assert.equal(h.events.filter(event => event[0] === 'new-response').length, 0);
+    h.coach.transcript(speech('sys-2', 'Interviewer', 'Please continue explaining.', 2000));
+    await h.coach.evaluate();
+    assert.equal(h.requests.length, 1, 'automatic coaching must not guess the unresolved screen intent');
+});
+
+test('a mouse review choice reuses the original images and asks for a focused review', async t => {
+    let count = 0;
+    const h = harness(
+        t,
+        async () =>
+            ++count === 1
+                ? reply('wait', '', { captureIntent: 'ambiguous', captureReason: 'Review or starter code?' })
+                : reply('patch', 'Carry 8 is discarded. Add the carry after the loop.', {
+                      captureIntent: 'review_code',
+                      captureReason: 'Existing implementation.',
+                  }),
+        ids => (ids || []).map(id => ({ id, label: id, data: `pixels-${id}` }))
+    );
+    const first = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['original-code'] });
+    await h.coach.evaluate();
+    await first;
+    const captureId = h.coach.lastState.capture.id;
+    const review = h.coach.captureAction(captureId, 'review_code');
+    await h.coach.evaluate();
+    assert.equal((await review).success, true);
+    const context = JSON.parse(h.requests[1].contents[0].parts[0].text);
+    assert.equal(context.request.captureAction, 'review_code');
+    assert.deepEqual(
+        context.images.map(image => image.id),
+        ['original-code']
+    );
+    assert.equal(h.coach.lastState.capture.intent, 'review_code');
+    assert.equal(h.coach.lastState.capture.needsChoice, false);
+});
+
+test('new coding problems request chalkboard explanations without dropping complete solutions', async t => {
+    const h = harness(t, async () =>
+        reply('solutions', 'Visual walkthrough, basic code, optimized code, complexity.', {
+            captureIntent: 'new_problem',
+            captureReason: 'Readable statement and starter signature.',
+        })
+    );
+    const pending = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['statement'] });
+    await h.coach.evaluate();
+    assert.equal((await pending).success, true);
+    assert.equal(h.coach.solutions[0].action, 'solutions');
+    assert.match(h.requests[0].config.systemInstruction, /Chalkboard walkthrough/);
+    assert.match(h.requests[0].config.systemInstruction, /Keep both solutions and complete code/);
+    assert.match(h.requests[0].config.systemInstruction, /signature is not a bug/);
+});
+
+test('a review cannot silently become two replacement solutions', async t => {
+    const h = harness(t, async () =>
+        reply('solutions', 'Replacement implementation', { captureIntent: 'review_code', captureReason: 'Existing code' })
+    );
+    const pending = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['code'] });
+    await h.coach.evaluate();
+    assert.equal((await pending).success, false);
+    assert.equal(h.coach.solutions.length, 0);
+    assert.equal(h.events.filter(event => event[0] === 'new-response').length, 0);
+});
+
+test('full corrected code is an explicit mouse action tied to the reviewed implementation', async t => {
+    let count = 0;
+    const h = harness(t, async () =>
+        ++count === 1
+            ? reply('patch', 'Change the bounds check.', { captureIntent: 'review_code', captureReason: 'Incorrect loop bound.' })
+            : reply('solutions', 'Complete corrected implementation in your structure.', {
+                  captureIntent: 'review_code',
+                  captureReason: 'Full corrected code requested.',
+              })
+    );
+    const first = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['code'] });
+    await h.coach.evaluate();
+    await first;
+    const second = h.coach.captureAction(h.coach.lastState.capture.id, 'full_code');
+    await h.coach.evaluate();
+    assert.equal((await second).success, true);
+    const context = JSON.parse(h.requests[1].contents[0].parts[0].text);
+    assert.equal(context.request.captureAction, 'full_code');
+    assert.equal(context.capture.previousReview, 'Change the bounds check.');
+});
+
+test('incomplete visible work receives a continuation instead of being treated as a new question', async t => {
+    const h = harness(t, async () =>
+        reply('patch', 'Your loops are present. Next, append the remaining carry.', {
+            captureIntent: 'continue_code',
+            captureReason: 'Partial implementation of the same problem.',
+        })
+    );
+    h.coach.problem.title = 'Multiply strings';
+    const pending = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['partial-code'] });
+    await h.coach.evaluate();
+    assert.equal((await pending).success, true);
+    assert.equal(h.coach.problemId, 1);
+    assert.equal(h.coach.lastState.capture.intent, 'continue_code');
+});
+
+test('capture actions are rejected after an explicit problem reset', async t => {
+    const h = harness(t, async () => reply('patch', 'A correction', { captureIntent: 'review_code', captureReason: '' }));
+    const pending = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['code'] });
+    await h.coach.evaluate();
+    await pending;
+    const id = h.coach.lastState.capture.id;
+    h.coach.newProblem();
+    assert.equal((await h.coach.captureAction(id, 'full_code')).success, false);
+    assert.equal((await h.coach.captureAction(id, 'arbitrary-action')).success, false);
+});
+
+test('missing visual context requests specific information without erasing the known problem', async t => {
+    const h = harness(t, async () =>
+        reply('wait', 'Capture the problem statement and the body below the visible signature.', {
+            captureIntent: 'missing_context',
+            captureReason: 'Only a signature is visible.',
+            problem: { title: 'Guessed problem' },
+        })
+    );
+    h.coach.problem.title = 'Known problem';
+    h.coach.summary = 'Earlier interview context';
+    const pending = h.coach.request('Analyze', { kind: 'screen-request', imageIds: ['signature'] });
+    await h.coach.evaluate();
+    assert.equal((await pending).success, true);
+    assert.equal(h.coach.problem.title, 'Known problem');
+    assert.equal(h.coach.summary, 'Earlier interview context');
+    assert.equal(h.coach.solutions.length, 0);
+});

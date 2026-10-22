@@ -1612,6 +1612,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             message: typeof event.message === 'string' ? event.message.slice(0, 300) : '',
         });
     });
+    ipcMain.handle('coach:capture-action', (_, payload) => {
+        const { validCaptureAction } = require('./capture-policy');
+        if (!validCaptureAction(payload)) return { success: false, error: 'Invalid capture action' };
+        return getGeminiHttp().captureAction(payload.captureId, payload.action);
+    });
     ipcMain.handle('coach:get-state', () => getGeminiHttp().getCoachState());
     ipcMain.handle('coach:new-problem', () => getGeminiHttp().startNewProblem());
 
