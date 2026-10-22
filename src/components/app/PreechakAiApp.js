@@ -32,6 +32,15 @@ export class PreechakAiApp extends LitElement {
             color: var(--text-primary);
         }
 
+        :host(.conversation-open) {
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            background: transparent;
+        }
+        :host(.conversation-open) .live-bar {
+            background: var(--coach-background);
+        }
+
         /* ── Full app shell: top bar + sidebar/content ── */
 
         .app-shell {
@@ -578,6 +587,13 @@ export class PreechakAiApp extends LitElement {
 
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
+            const syncMuteState = state => {
+                this._isMicMuted = state.isMicMuted;
+                this._isSpeakerMuted = state.isSpeakerMuted;
+                this.requestUpdate();
+            };
+            ipcRenderer.on('audio-mute-state', (_, state) => syncMuteState(state));
+            ipcRenderer.invoke('get-audio-mute-state').then(syncMuteState).catch(console.error);
             ipcRenderer.on('new-response', (_, response) => {
                 this.liveTranscription = null;
                 this.liveThinking = null;
@@ -632,6 +648,7 @@ export class PreechakAiApp extends LitElement {
             ipcRenderer.removeAllListeners('whisper-downloading');
             ipcRenderer.removeAllListeners('local-ai-download-progress');
             ipcRenderer.removeAllListeners('stealth-mode-changed');
+            ipcRenderer.removeAllListeners('audio-mute-state');
         }
         if (this._onStealthChanged) {
             window.removeEventListener('stealth-mode-changed', this._onStealthChanged);
@@ -676,6 +693,13 @@ export class PreechakAiApp extends LitElement {
     }
 
     addNewResponse(response) {
+        const existingIndex = response?.requestId ? this.responses.findIndex(item => item?.requestId === response.requestId) : -1;
+        if (existingIndex !== -1) {
+            this.responses = this.responses.map((item, index) => (index === existingIndex ? { ...item, ...response } : item));
+            this._awaitingNewResponse = false;
+            this.requestUpdate();
+            return;
+        }
         const wasOnLatest = this.currentResponseIndex === this.responses.length - 1;
         this.responses = [...this.responses, response];
         if (wasOnLatest || this.currentResponseIndex === -1) {
@@ -756,7 +780,6 @@ export class PreechakAiApp extends LitElement {
             const { ipcRenderer } = window.require('electron');
             await ipcRenderer.invoke('set-audio-mute-state', {
                 micMuted: this._isMicMuted,
-                speakerMuted: this._isSpeakerMuted,
             });
         }
         this.addNewResponse({
@@ -775,7 +798,6 @@ export class PreechakAiApp extends LitElement {
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
             await ipcRenderer.invoke('set-audio-mute-state', {
-                micMuted: this._isMicMuted,
                 speakerMuted: this._isSpeakerMuted,
             });
         }
@@ -971,6 +993,7 @@ export class PreechakAiApp extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
+        this.classList.toggle('conversation-open', this.currentView === 'assistant');
         const protectedLive = this._stealthMode && this.currentView === 'assistant';
         this.classList.toggle('stealth-live', protectedLive);
         if (protectedLive) {

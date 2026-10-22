@@ -9,6 +9,8 @@ export class AssistantView extends LitElement {
             :host {
                 position: relative;
                 height: 100%;
+                min-height: 0;
+                overflow: hidden;
                 display: flex;
                 flex-direction: column;
             }
@@ -239,8 +241,13 @@ export class AssistantView extends LitElement {
                 }
             }
 
+            .conversation-heading,
+            .chat-container {
+                background: rgba(var(--conversation-rgb, 11, 23, 41), var(--conversation-opacity, 0.4));
+            }
             .chat-container {
                 flex: 1;
+                min-height: 100px;
                 overflow-y: auto;
                 padding: var(--space-md);
                 display: flex;
@@ -399,7 +406,9 @@ export class AssistantView extends LitElement {
                 display: flex;
                 flex-direction: column;
                 align-items: flex-start;
-                max-width: 85%;
+                max-width: 100%;
+                width: 100%;
+                min-width: 0;
                 gap: 4px;
             }
 
@@ -412,7 +421,7 @@ export class AssistantView extends LitElement {
             }
 
             .bubble-ai {
-                background: var(--bg-surface);
+                background: var(--answer-background, var(--bg-surface));
                 color: var(--text-primary);
                 border: 1px solid var(--border);
                 border-radius: 18px 18px 18px 4px;
@@ -695,15 +704,149 @@ export class AssistantView extends LitElement {
                 }
             }
 
+            .coach-resizer {
+                height: 10px;
+                background: var(--coach-background, var(--bg-surface));
+                border-top: 1px solid var(--border);
+                box-sizing: border-box;
+                flex-shrink: 0;
+                cursor: default;
+                touch-action: none;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .coach-panel::-webkit-scrollbar,
+            .coach-captions::-webkit-scrollbar {
+                width: 6px;
+            }
+            .coach-panel::-webkit-scrollbar-track,
+            .coach-captions::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .coach-panel::-webkit-scrollbar-thumb,
+            .coach-captions::-webkit-scrollbar-thumb {
+                background: var(--border);
+                border-radius: 4px;
+            }
+            .coach-panel::-webkit-scrollbar-thumb:hover,
+            .coach-captions::-webkit-scrollbar-thumb:hover {
+                background: var(--accent);
+            }
+            .coach-resizer::after {
+                content: '';
+                width: 64px;
+                height: 3px;
+                border-radius: 3px;
+                background: var(--border);
+            }
+            .coach-resizer:hover::after,
+            .coach-resizer:focus-visible::after {
+                background: var(--accent);
+            }
+            .coach-panel.compact {
+                max-height: 150px;
+            }
+            .coach-panel.expanded {
+                height: var(--coach-height, 260px);
+                max-height: 50vh;
+                min-height: 100px;
+            }
+            .coach-panel .coach-toolbar {
+                margin-bottom: 0;
+            }
+            .coach-title {
+                flex: 1;
+                min-width: 80px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                color: var(--text-secondary);
+            }
+            .coach-extra[hidden] {
+                display: none;
+            }
             .coach-panel {
                 flex-shrink: 0;
                 padding: 10px 16px;
                 color: var(--text-primary);
-                background: var(--bg-surface);
-                border-top: 1px solid var(--border);
+                background: var(--coach-background, var(--bg-surface));
+                border: none;
+                border-bottom: 1px solid var(--border);
+                border-radius: 0;
+                margin: 0;
+                box-sizing: border-box;
                 font-size: var(--font-size-sm);
                 max-height: 45vh;
                 overflow-y: auto;
+            }
+            .conversation-heading {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 10px;
+                padding: 12px 20px;
+            }
+            .conversation-heading h2 {
+                margin: 0;
+                font-size: 20px;
+            }
+            .readability-control {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+            }
+            .readability-control input {
+                width: 100px;
+                accent-color: var(--accent);
+                cursor: default;
+            }
+            .coach-problem {
+                display: flex;
+                gap: 20px;
+                padding: 10px 0;
+                border-block: 1px solid var(--border);
+            }
+            .coach-problem > div {
+                min-width: 0;
+            }
+            .coach-problem strong,
+            .capture-controls > strong {
+                color: var(--text-secondary);
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            .coach-problem details {
+                flex: 1;
+            }
+            .capture-buttons {
+                display: grid !important;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+            @media (max-width: 800px) {
+                .capture-buttons {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .coach-problem {
+                    flex-direction: column;
+                    gap: 8px;
+                }
+            }
+            @media (max-width: 480px) {
+                .capture-buttons {
+                    grid-template-columns: 1fr;
+                }
+            }
+            .capture-buttons button {
+                min-height: 36px;
+                text-align: left;
+            }
+            .bubble-ai-content .code-block-wrapper,
+            .bubble-ai-content pre {
+                background: var(--code-background) !important;
             }
             .coach-toolbar,
             .coach-sources {
@@ -765,9 +908,22 @@ export class AssistantView extends LitElement {
                 border-radius: 4px;
                 padding: 5px 8px;
             }
+            .coach-toolbar button:hover:not(:disabled),
+            .capture-buttons button:hover:not(:disabled) {
+                background: color-mix(in srgb, var(--accent) 22%, var(--bg-elevated));
+                border-color: var(--accent);
+            }
+            .coach-toolbar button:active:not(:disabled),
+            .capture-buttons button:active:not(:disabled) {
+                background: color-mix(in srgb, var(--accent) 12%, var(--bg-base, #102f33));
+                border-color: var(--accent);
+                box-shadow: inset 0 1px 3px #0004;
+            }
+            .coach-toolbar button:disabled,
             .capture-buttons button:disabled {
                 opacity: 0.6;
             }
+            .coach-toolbar button:focus-visible,
             .capture-buttons button:focus-visible {
                 outline: 1px solid var(--accent);
             }
@@ -790,7 +946,7 @@ export class AssistantView extends LitElement {
                 align-items: center;
                 gap: var(--space-sm);
                 padding: var(--space-md);
-                background: transparent;
+                background: var(--code-background);
             }
 
             .input-bar-inner {
@@ -1293,10 +1449,16 @@ export class AssistantView extends LitElement {
         stealthMode: { type: Boolean },
         audioLevels: { state: true },
         captureActionError: { state: true },
+        conversationOpacity: { state: true },
+        coachExpanded: { state: true },
+        coachHeight: { state: true },
     };
 
     constructor() {
         super();
+        this.conversationOpacity = 40;
+        this.coachExpanded = false;
+        this.coachHeight = 260;
         this.responses = [];
         this.currentResponseIndex = -1;
         this.selectedProfile = 'interview';
@@ -1485,6 +1647,21 @@ export class AssistantView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
+        const storedOpacity = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--conversation-opacity'));
+        this.conversationOpacity = Math.round((Number.isFinite(storedOpacity) ? storedOpacity : 0.4) * 100);
+        this._layoutLoading = true;
+        window.preechakAi?.storage
+            ?.getPreferences()
+            .then(prefs => {
+                if (!this.isConnected || !this._layoutLoading) return;
+                this.coachExpanded = prefs.coachExpanded === true;
+                this.coachHeight = this.clampCoachHeight(prefs.coachHeight);
+            })
+            .catch(error => console.error('Could not load coach layout', error));
+        this._opacityHandler = event => {
+            this.conversationOpacity = Math.round(event.detail.opacity * 100);
+        };
+        window.addEventListener('opacity-changed', this._opacityHandler);
         this._audioLevelHandler = event => {
             const detail = event.detail;
             const previous = this.audioLevels[detail.source];
@@ -1555,6 +1732,7 @@ export class AssistantView extends LitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         window.removeEventListener('audio-input-status', this._audioLevelHandler);
+        window.removeEventListener('opacity-changed', this._opacityHandler);
         document.removeEventListener('pointerdown', this._dismissModeMenu, true);
         window.removeEventListener('blur', this._dismissModeMenuOnBlur);
         this.showModeMenu = false;
@@ -1902,16 +2080,88 @@ export class AssistantView extends LitElement {
         `;
     }
 
+    clampCoachHeight(height) {
+        return Number.isFinite(height) ? Math.max(100, Math.min(600, height)) : 260;
+    }
+
+    async saveCoachLayout() {
+        try {
+            await window.preechakAi.storage.updatePreference('coachExpanded', this.coachExpanded);
+            await window.preechakAi.storage.updatePreference('coachHeight', this.coachHeight);
+        } catch (error) {
+            console.error('Could not save coach layout', error);
+        }
+    }
+
+    toggleCoach() {
+        this._layoutLoading = false;
+        this.coachExpanded = !this.coachExpanded;
+        void this.saveCoachLayout();
+    }
+
+    startCoachResize(event) {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        this._layoutLoading = false;
+        const handle = event.currentTarget;
+        const startY = event.clientY;
+        const startHeight = this.shadowRoot.querySelector('.coach-panel').getBoundingClientRect().height;
+        this.coachExpanded = true;
+        handle.setPointerCapture(event.pointerId);
+        const move = e => {
+            this.coachHeight = this.clampCoachHeight(startHeight + startY - e.clientY);
+        };
+        const finish = () => {
+            handle.removeEventListener('pointermove', move);
+            handle.removeEventListener('pointerup', finish);
+            handle.removeEventListener('pointercancel', finish);
+            handle.removeEventListener('lostpointercapture', finish);
+            void this.saveCoachLayout();
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', finish);
+        handle.addEventListener('pointercancel', finish);
+        handle.addEventListener('lostpointercapture', finish);
+    }
+
     renderCoachPanel() {
         const state = this.coachState;
         if (!state?.active) return '';
         const problem = state.problem || {};
         return html`
-            <section class="coach-panel" aria-label="Conversation coach">
+            <div
+                class="coach-resizer"
+                role="separator"
+                aria-label="Resize Conversation Coach"
+                aria-orientation="horizontal"
+                aria-valuemin="100"
+                aria-valuemax="600"
+                aria-valuenow=${this.coachHeight}
+                tabindex="0"
+                @pointerdown=${this.startCoachResize}
+                @keydown=${e => {
+                    if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+                    e.preventDefault();
+                    this._layoutLoading = false;
+                    this.coachExpanded = true;
+                    this.coachHeight = this.clampCoachHeight(this.coachHeight + (e.key === 'ArrowUp' ? 20 : -20));
+                    void this.saveCoachLayout();
+                }}
+            ></div>
+            <section
+                class="coach-panel ${this.coachExpanded ? 'expanded' : 'compact'}"
+                style=${`--coach-height: ${this.coachHeight}px`}
+                aria-label="Conversation coach"
+            >
                 <div class="coach-toolbar">
                     <strong>Conversation Coach</strong>
-                    <span>${state.busy ? 'Evaluating context…' : 'Listening'}</span>
+                    <span class="coach-title">${problem.title || 'Waiting for context'}</span>
+                    <button type="button" aria-expanded=${this.coachExpanded} @click=${this.toggleCoach}>
+                        ${this.coachExpanded ? 'Collapse' : 'Expand'}
+                    </button>
+                    <span>${state.busy ? 'Evaluating context…' : this.isMicMuted && this.isSpeakerMuted ? 'Audio muted' : 'Listening'}</span>
                     <button
+                        ?hidden=${!this.coachExpanded}
                         type="button"
                         @click=${async () => {
                             const { ipcRenderer } = window.require('electron');
@@ -1921,6 +2171,7 @@ export class AssistantView extends LitElement {
                         New problem
                     </button>
                     <button
+                        ?hidden=${!this.coachExpanded}
                         type="button"
                         @click=${() =>
                             this.onSendText(
@@ -1930,33 +2181,43 @@ export class AssistantView extends LitElement {
                         Update solutions
                     </button>
                 </div>
-                ${this.renderCaptureControls()}
-                <div class="coach-sources">
-                    ${Object.entries(state.sources || {}).map(([source, status]) => {
-                        const muted = source === 'You' ? this.isMicMuted : this.isSpeakerMuted;
-                        return html`<span
-                            >${source}: ${muted ? 'muted' : status.status}
-                            ${this.audioLevels[source]
-                                ? html`<meter
-                                          min="0"
-                                          max="0.2"
-                                          value=${muted ? 0 : this.audioLevels[source].rms}
-                                          aria-label=${`${source} input level`}
-                                      ></meter>
-                                      ${!muted && this.audioLevels[source].clipped ? 'Input clipping' : ''}`
-                                : ''}
-                            ${status.message || ''} ${status.captureStatus === 'capture-error' ? `Capture error: ${status.captureMessage}` : ''}
-                        </span>`;
-                    })}
+                <div class="coach-extra" ?hidden=${!this.coachExpanded}>
+                    <div class="coach-problem">
+                        <div>
+                            <strong>Current problem</strong>
+                            <div>${problem.title || 'Waiting for context'}</div>
+                        </div>
+                        <details>
+                            <summary>Requirements · ${problem.requirements?.length || 0}</summary>
+                            ${(problem.requirements || []).map(item => html`<div>${item}</div>`)}
+                            ${problem.openQuestions?.length ? html`<div>Unanswered: ${problem.openQuestions.join(' · ')}</div>` : ''}
+                        </details>
+                    </div>
+                    ${this.renderCaptureControls()}
+                    <div class="coach-sources">
+                        ${Object.entries(state.sources || {}).map(([source, status]) => {
+                            const muted = source === 'You' ? this.isMicMuted : this.isSpeakerMuted;
+                            return html`<span
+                                >${source}: ${muted ? 'muted' : status.status}
+                                ${this.audioLevels[source]
+                                    ? html`<meter
+                                              min="0"
+                                              max="0.2"
+                                              value=${muted ? 0 : this.audioLevels[source].rms}
+                                              aria-label=${`${source} input level`}
+                                          ></meter>
+                                          ${!muted && this.audioLevels[source].clipped ? 'Input clipping' : ''}`
+                                    : ''}
+                                ${status.message || ''} ${status.captureStatus === 'capture-error' ? `Capture error: ${status.captureMessage}` : ''}
+                            </span>`;
+                        })}
+                    </div>
+                    <details class="coach-captions">
+                        <summary>Conversation captions</summary>
+                        ${(state.recentTurns || []).map(turn => html`<div><strong>${turn.source}:</strong> ${turn.text}</div>`)}
+                        ${(state.drafts || []).map(turn => html`<div class="coach-draft"><strong>${turn.source} — live:</strong> ${turn.text}</div>`)}
+                    </details>
                 </div>
-                ${problem.title ? html`<div><strong>Current problem:</strong> ${problem.title}</div>` : ''}
-                ${problem.requirements?.length ? html`<div><strong>Requirements:</strong> ${problem.requirements.join(' · ')}</div>` : ''}
-                ${problem.openQuestions?.length ? html`<div><strong>Unanswered:</strong> ${problem.openQuestions.join(' · ')}</div>` : ''}
-                <details class="coach-captions" open>
-                    <summary>Conversation captions</summary>
-                    ${(state.recentTurns || []).map(turn => html`<div><strong>${turn.source}:</strong> ${turn.text}</div>`)}
-                    ${(state.drafts || []).map(turn => html`<div class="coach-draft"><strong>${turn.source} — live:</strong> ${turn.text}</div>`)}
-                </details>
                 ${state.card
                     ? html`<div
                           class="coach-card bubble-ai-content"
@@ -2230,6 +2491,30 @@ export class AssistantView extends LitElement {
         const isListening = this.sessionActive || this.statusText?.includes('Listening') || this.statusText?.includes('connected');
 
         return html`
+            <div class="conversation-heading">
+                <h2>Conversation</h2>
+                <label class="readability-control"
+                    >Background opacity
+                    <input
+                        type="range"
+                        min="10"
+                        max="100"
+                        .value=${String(this.conversationOpacity)}
+                        @input=${e => {
+                            this.conversationOpacity = Math.max(10, Math.min(100, Number(e.target.value)));
+                            document.documentElement.style.setProperty('--conversation-opacity', this.conversationOpacity / 100);
+                        }}
+                        @change=${async () => {
+                            try {
+                                await window.preechakAi.storage.updatePreference('backgroundTransparency', this.conversationOpacity / 100);
+                            } catch (error) {
+                                console.error('Could not save background opacity', error);
+                            }
+                        }}
+                    />
+                    <span>${this.conversationOpacity}%</span>
+                </label>
+            </div>
             <div class="chat-container" id="chatContainer" @click=${this.handleContentClick}>
                 ${!hasResponses && !isListening
                     ? html`

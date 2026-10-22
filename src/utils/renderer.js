@@ -1050,6 +1050,22 @@ const preechakAiApp = document.querySelector('preechak-ai-app');
 // ============ THEME SYSTEM ============
 const theme = {
     themes: {
+        windowsblue: {
+            background: '#0b1729',
+            text: '#f1f6ff',
+            textSecondary: '#bdd1eb',
+            textMuted: '#94adcc',
+            border: '#365574',
+            accent: '#60a5fa',
+            btnPrimaryBg: '#0078d4',
+            btnPrimaryText: '#ffffff',
+            btnPrimaryHover: '#168ce5',
+            tooltipBg: '#213b5b',
+            tooltipText: '#f1f6ff',
+            keyBg: 'rgba(96,165,250,0.16)',
+            bubbleUserBg: '#0078d4',
+            bubbleUserText: '#ffffff',
+        },
         deepteal: {
             background: '#102c30',
             text: '#f0fbf9',
@@ -1194,11 +1210,11 @@ const theme = {
         },
     },
 
-    current: 'deepteal',
+    current: 'windowsblue',
 
     normalize(name) {
         if (name === 'dark') return 'deepteal';
-        return this.themes[name] ? name : 'deepteal';
+        return this.themes[name] ? name : 'windowsblue';
     },
 
     get(name) {
@@ -1207,6 +1223,7 @@ const theme = {
 
     getAll() {
         const names = {
+            windowsblue: 'Windows Blue',
             deepteal: 'Deep Teal',
             charcoal: 'Charcoal',
             light: 'Light',
@@ -1270,6 +1287,15 @@ const theme = {
         const bgHover = `rgba(${hover.r}, ${hover.g}, ${hover.b}, ${alpha})`;
 
         // New design tokens (used by components)
+        root.style.setProperty('--conversation-rgb', `${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}`);
+        root.style.setProperty('--conversation-opacity', alpha);
+        root.style.setProperty('--answer-rgb', `${secondary.r}, ${secondary.g}, ${secondary.b}`);
+        root.style.setProperty('--answer-background', `rgba(${secondary.r}, ${secondary.g}, ${secondary.b}, 0.9)`);
+        root.style.setProperty('--code-background', `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, 0.95)`);
+        root.style.setProperty(
+            '--coach-background',
+            this.current === 'windowsblue' ? 'rgba(33, 59, 91, 0.95)' : `rgba(${tertiary.r}, ${tertiary.g}, ${tertiary.b}, 0.95)`
+        );
         root.style.setProperty('--bg-app', bgBase);
         root.style.setProperty('--bg-surface', bgSurface);
         root.style.setProperty('--bg-elevated', bgElevated);
@@ -1335,14 +1361,18 @@ const theme = {
     async load() {
         try {
             const prefs = await storage.getPreferences();
-            const themeName = this.normalize(prefs.theme);
-            const alpha = prefs.backgroundTransparency ?? 0.8;
+            const migrating = prefs.blueLayoutVersion !== 1 && ['deepteal', 'dark'].includes(prefs.theme);
+            const themeName = migrating ? 'windowsblue' : this.normalize(prefs.theme);
+            const alpha = migrating ? 0.4 : (prefs.backgroundTransparency ?? 0.4);
+            if (migrating) await storage.updatePreference('backgroundTransparency', alpha);
+            if (prefs.blueLayoutVersion !== 1) await storage.updatePreference('blueLayoutVersion', 1);
+
             this.apply(themeName, alpha);
             if (prefs.theme !== themeName) await storage.updatePreference('theme', themeName);
             return themeName;
         } catch (err) {
-            this.apply('deepteal');
-            return 'deepteal';
+            this.apply('windowsblue', 0.4);
+            return 'windowsblue';
         }
     },
 

@@ -52,6 +52,7 @@ function harness({
                             this.audio = [];
                             transcriptionConnections.push(this);
                         }
+                        mute() {}
                         async start() {
                             if (streamError) throw new Error(streamError);
                         }
@@ -930,4 +931,38 @@ test('ambiguous captures support mouse resolution and retain their screenshot in
     assert.equal(h.savedAnalyses.length, 1);
     assert.equal(h.savedAnalyses[0][3], 'data:image/jpeg;base64,codePixels');
     assert.equal(h.savedAnalyses[0][4], '/fake/code.jpg');
+});
+
+test('muting discards an in-flight legacy transcription even after unmuting', async () => {
+    let release;
+    const h = harness({
+        transcribe: () =>
+            new Promise(resolve => {
+                release = resolve;
+            }),
+    });
+    await h.api.initializeGeminiHttpSession('test');
+    const pending = h.segment(audio, 'You');
+    h.api.setAudioMuted({ micMuted: true });
+    h.api.setAudioMuted({ micMuted: false });
+    release({ text: 'Obsolete muted speech' });
+    await pending;
+    assert.equal(h.saved.length, 0);
+    assert.equal(h.requests.length, 0);
+});
+
+test('both muted blocks streaming audio and late captions while text requests remain available', async () => {
+    const h = harness({ preferences: { conversationCoaching: true, audioMode: 'both' } });
+    await h.api.initializeGeminiHttpSession('test');
+    h.api.setAudioMuted({ micMuted: true, speakerMuted: true });
+    const streams = h.transcriptionConnections[0];
+    for (const source of ['You', 'Interviewer']) {
+        h.api.processHttpAudioChunk(audio, source);
+        streams.options.onTranscript({ id: source, source, text: 'Muted speech', final: true });
+    }
+    assert.equal(streams.audio.length, 0);
+    assert.equal(h.saved.length, 0);
+    await h.api.sendTextToGeminiHttp('Explain this');
+    assert.equal(h.coachRequests.length, 1);
+    h.api.closeGeminiHttpSession();
 });

@@ -361,3 +361,43 @@ test('missing visual context requests specific information without erasing the k
     assert.equal(h.coach.summary, 'Earlier interview context');
     assert.equal(h.coach.solutions.length, 0);
 });
+
+test('muted sources discard drafts and late finals while the other source continues', t => {
+    const h = harness(t);
+    h.coach.transcript({ ...speech('draft', 'You', 'unfinished'), final: false });
+    h.coach.setMuted('You', true);
+    assert.equal(h.coach.drafts.size, 0);
+    h.coach.transcript(speech('late', 'You', 'muted speech'));
+    h.coach.transcript(speech('other', 'Interviewer', 'still audible'));
+    assert.equal(h.coach.turns.length, 1);
+    h.coach.setMuted('You', false);
+    h.coach.transcript(speech('fresh', 'You', 'new speech'));
+    assert.equal(h.coach.turns.length, 2);
+});
+
+for (const [action, label] of Object.entries({
+    new_problem: 'New problem',
+    review_code: 'Review my code',
+    continue_code: 'Help me continue',
+    full_code: 'Show full corrected code',
+    explain_visual: 'Explain visually',
+})) {
+    test(`capture button ${action} immediately publishes its request and pairs its answer`, async t => {
+        const h = harness(t, async () => reply('hint', 'Here is the explanation.', { captureIntent: 'review_code' }));
+        h.coach.captures.set('capture', { id: 'capture', problemId: h.coach.problemId, imageIds: [] });
+        const pending = h.coach.captureAction('capture', action);
+        const first = h.events.filter(([channel]) => channel === 'new-response');
+        assert.equal(first.length, 1);
+        assert.equal(first[0][1].prompt, label);
+        assert.equal(first[0][1].text, '');
+        const duplicate = await h.coach.captureAction('capture', action);
+        assert.equal(duplicate.success, false);
+        assert.equal(h.events.filter(([channel]) => channel === 'new-response').length, 1);
+        await h.coach.evaluate();
+        await pending;
+        const messages = h.events.filter(([channel]) => channel === 'new-response');
+        assert.equal(messages.length, 2);
+        assert.equal(messages[1][1].requestId, messages[0][1].requestId);
+        assert.equal(messages[1][1].prompt, label);
+    });
+}

@@ -95,8 +95,6 @@ function resetAudioBuffers() {
     currentActiveChannel = 'Interviewer';
     isUserSpeakingOnMic = false;
     lastTranscriptionSpeaker = null;
-    isMicMuted = false;
-    isSpeakerMuted = false;
     if (userMicTimer) {
         clearTimeout(userMicTimer);
         userMicTimer = null;
@@ -1685,6 +1683,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (micMuted !== undefined) isMicMuted = !!micMuted;
         if (speakerMuted !== undefined) isSpeakerMuted = !!speakerMuted;
         if (currentProviderMode === 'byok_http') getGeminiHttp().setAudioMuted({ micMuted: isMicMuted, speakerMuted: isSpeakerMuted });
+        sendToRenderer('audio-mute-state', { isMicMuted, isSpeakerMuted });
         return { success: true, isMicMuted, isSpeakerMuted };
     });
 
@@ -1875,6 +1874,7 @@ module.exports = {
     sendAudioToGemini,
     sendImageToGeminiHttp,
     setupGeminiIpcHandlers,
+    getAudioMuteState: () => ({ micMuted: isMicMuted, speakerMuted: isSpeakerMuted }),
     formatSpeakerResults,
     sendToGroq,
     hasGroqKey,

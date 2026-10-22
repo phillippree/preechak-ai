@@ -101,11 +101,13 @@ test('upload backpressure closes the affected source instead of queuing unbounde
     assert.equal(h.sockets[1].closed, undefined);
 });
 
-test('muting finalizes the source and unmuting resumes without affecting the other connection', async t => {
+test('muting isolates the source and unmuting resumes without affecting the other connection', async t => {
     const h = fixture(t);
     await h.streams.start();
     h.streams.mute('You', true);
-    assert.equal(h.sockets[0].messages.at(-1).realtimeInput.audioStreamEnd, true);
+    assert.equal(h.sockets[0].closed, true);
+    h.sockets[0].receive({ serverContent: { inputTranscription: { text: 'Late muted audio' } } });
+    assert.equal(h.transcripts.length, 0);
     const count = h.sockets[0].messages.length;
     h.streams.send('You', Buffer.alloc(4800));
     assert.equal(h.sockets[0].messages.length, count);
@@ -113,5 +115,35 @@ test('muting finalizes the source and unmuting resumes without affecting the oth
     assert.equal(h.sockets[1].messages.length, 2);
     h.streams.mute('You', false);
     h.streams.send('You', Buffer.alloc(4800));
-    assert.equal(h.sockets[0].messages.length, count + 1);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.sockets.length, 3);
+    assert.equal(h.sockets[2].messages.length, 2);
+    h.sockets[0].receive({ serverContent: { inputTranscription: { text: 'Old audio after unmute' } } });
+    assert.equal(h.transcripts.length, 0);
+    h.sockets[2].receive({ serverContent: { inputTranscription: { text: 'Fresh audio' } } });
+    assert.equal(h.transcripts.length, 1);
+});
+
+for (const muted of [[], ['You'], ['Interviewer'], ['You', 'Interviewer']]) {
+    test(`mute combination ${JSON.stringify(muted)} blocks only selected sources`, async t => {
+        const h = fixture(t);
+        for (const source of muted) h.streams.mute(source, true);
+        await h.streams.start();
+        assert.equal(h.sockets.length, 2 - muted.length);
+        for (const source of ['You', 'Interviewer']) {
+            h.streams.send(source, Buffer.alloc(4800));
+            assert.equal(h.streams.sources.get(source).bytes, 0);
+        }
+        assert.ok(h.sockets.every(socket => socket.messages.length === 2));
+    });
+}
+
+test('mute during connection setup settles startup and cancels stale callbacks', async t => {
+    const h = fixture(t);
+    const starting = h.streams.start();
+    h.streams.mute('You', true);
+    await starting;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.streams.sources.get('You').ready, false);
+    assert.equal(h.streams.sources.get('You').timer, undefined);
 });

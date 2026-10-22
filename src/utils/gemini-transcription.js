@@ -8,19 +8,22 @@ class GeminiTranscription {
         model = 'gemini-3.5-transcribe-live',
         language = 'en-US',
         sources,
+        mutedSources = [],
         onTranscript,
         onStatus,
         Socket = WebSocket,
         now = Date.now,
     }) {
         Object.assign(this, { apiKey, model, language, onTranscript, onStatus, Socket, now });
-        this.sources = new Map(sources.map(source => [source, { source, sequence: 0, attempts: 0, queue: [], bytes: 0, epoch: 0 }]));
+        this.sources = new Map(
+            sources.map(source => [source, { source, sequence: 0, attempts: 0, queue: [], bytes: 0, epoch: 0, muted: mutedSources.includes(source) }])
+        );
         this.closed = false;
     }
 
     async start() {
         try {
-            await Promise.all([...this.sources.values()].map(state => this.connect(state)));
+            await Promise.all([...this.sources.values()].filter(state => !state.muted).map(state => this.connect(state)));
         } catch (error) {
             this.close();
             throw error;
@@ -28,6 +31,7 @@ class GeminiTranscription {
     }
 
     connect(state) {
+        if (this.closed || state.muted) return Promise.resolve();
         const epoch = ++state.epoch;
         return new Promise((resolve, reject) => {
             const socket = new this.Socket(
@@ -48,6 +52,13 @@ class GeminiTranscription {
                 socket.close();
             }, 15000);
             const current = () => !this.closed && epoch === state.epoch;
+            state.cancelConnect = () => {
+                clearTimeout(timeout);
+                if (!settled) {
+                    settled = true;
+                    resolve();
+                }
+            };
             socket.on('open', () => {
                 if (!current()) return socket.close();
                 socket.send(
@@ -90,7 +101,7 @@ class GeminiTranscription {
                     resolve();
                 }
                 const content = message.serverContent;
-                if (!content) return;
+                if (!content || state.muted) return;
                 const draft = content.interimInputTranscription;
                 const final = content.inputTranscription;
                 for (const [part, isFinal] of [
@@ -170,25 +181,27 @@ class GeminiTranscription {
     mute(source, muted) {
         const state = this.sources.get(source);
         if (!state || this.closed) return;
-        const changed = state.muted !== muted;
+        muted = Boolean(muted);
+        if (Boolean(state.muted) === muted) return;
         state.muted = muted;
-        if (muted) {
-            state.queue = [];
-            state.bytes = 0;
-            if (state.ready && changed) {
-                try {
-                    state.socket.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
-                } catch {
-                    state.socket.close();
-                }
-            }
-        }
+        clearTimeout(state.timer);
+        state.cancelConnect?.();
+        state.epoch++;
+        state.ready = false;
+        state.startedAt = null;
+        state.queue = [];
+        state.bytes = 0;
+        state.attempts = 0;
+        state.socket?.close();
+        this.onStatus({ source, status: muted ? 'muted' : 'reconnecting' });
+        if (!muted) void this.connect(state).catch(() => {});
     }
 
     close() {
         this.closed = true;
         for (const state of this.sources.values()) {
             clearTimeout(state.timer);
+            state.cancelConnect?.();
             state.epoch++;
             state.queue = [];
             state.bytes = 0;

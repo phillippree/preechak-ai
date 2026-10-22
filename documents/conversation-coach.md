@@ -10,7 +10,7 @@ Choose **Both Speaker and Microphone** under **Customize → Audio Input** to in
 - `gemini-transcription.js` opens a separate authenticated Live connection per selected source. Gemini performs speech recognition and server-side speech detection. Source identity comes from the connection, not speaker guessing. Multiple people in the remote call are still labeled Interviewer; this is not participant diarization.
 - Interim text replaces each source's draft caption. Final text enters the conversation, ordered by app-side speech-onset timestamps. These timestamps approximate capture time, not word-level server alignment. Overlapping audio remains separate. A conservative same-text/time heuristic suppresses likely long echo duplicates while preserving short Yes/No replies.
 - The panel displays source connection/capture errors, microphone levels, clipping, both caption streams, the current problem, unanswered questions, and one coaching card. Input levels and clipping remain visible; native tooltips are suppressed in the protected coaching view. Headphones remain helpful for preventing room echo.
-- Reconnection is independent per source with bounded backoff and a two-second unsent-audio buffer. Already sent audio is not replayed. Gaps are explicitly reported. Upload backpressure reconnects the affected source instead of growing memory indefinitely. Muting a source ends its current audio activity so an unfinished caption does not wait for more muted audio; unmuting resumes that source. Stopping capture closes contexts and releases microphone tracks.
+- Reconnection is independent per source with bounded backoff and a two-second unsent-audio buffer. Already sent audio is not replayed. Gaps are explicitly reported. Upload backpressure reconnects the affected source instead of growing memory indefinitely. Mute settings survive capture stop/start and session restarts. Muting a source clears its queued audio and draft caption, cancels pending automatic coaching, and closes its transcription connection. Late replies from that connection are ignored, including after unmuting; unmuting opens a fresh connection for that source. Already finalized captions remain as history. Muted sources do not upload audio, but local capture remains open for resuming. Typed messages and screenshots still work with both sources muted. The UI reads and receives the authoritative mute settings from the main process. Stopping capture closes contexts and releases microphone tracks.
 
 ## Conversation and decisions
 
@@ -75,3 +75,21 @@ node_modules/.bin/electron tests/capture-ui-smoke.cjs
 ```
 
 The isolated Electron smoke test uses synthetic content, enables content protection, and checks actual hover/pressed cursor styles, mouse action routing, native title removal, inert links, and the window count. It does not record the desktop or prove what Zoom/Meet viewers see; confirm that separately with stealth enabled in the actual sharing client.
+
+Screen analysis action buttons highlight on hover and darken when pressed. Disabled buttons do not highlight. These styles render within the protected app window; the arrow cursor and absence of native tooltips or popup windows are preserved.
+
+Clicking a screen analysis action immediately adds its button label as your message in the conversation. The resulting answer updates that same entry, preventing duplicate request bubbles. Rejected actions do not add messages. These messages use the existing protected chat view.
+
+## Blue layout
+
+The default Windows Blue theme separates the conversation from a lighter, bordered Coach panel. The panel groups current problem and expandable requirements, screen actions, audio sources, and collapsed captions. Existing Deep Teal/dark preferences migrate once to Windows Blue with 40% background opacity. Other saved themes remain available.
+
+The window background and answer readability are independent: the background defaults to 40% opacity, answers to 90%, code to 95%, and the Coach panel to 95%. Text stays fully opaque; no whole-window opacity is applied. The Background opacity slider changes only the conversation background from 10–100% and saves `backgroundTransparency` in local preferences. Answer cards remain at 90%, code at 95%, and the Coach panel at 95%; old `answerReadability` preferences are ignored. The assistant shell is transparent so it does not block the background underneath. Existing transparency shortcuts still adjust the window background. On-screen transparency depends on the desktop compositor; verify over both bright and dark windows. Controls remain inside the protected window with arrow cursors and no native tooltips.
+
+The Coach toolbar buttons (New problem and Update solutions) share the screen-action buttons’ hover, pressed, disabled, and keyboard focus colors. Their arrow cursor and protected-window behavior are unchanged.
+
+## Compact layout
+
+Answer cards use the full conversation width. The Coach starts compact with status, the current problem, an Expand button, and any latest coaching advice. Expanding reveals screen actions, requirements, source details, and captions. Drag the divider above the Coach upward to grow it or downward to shrink it; focus it and use Up/Down arrows for 20-pixel adjustments. The expanded panel is capped at half the viewport so the conversation retains space. Panel size and expanded state are saved locally as `coachHeight` and `coachExpanded`. Controls remain in the protected window and retain the arrow cursor.
+
+The conversation, internal resize divider, Coach, and composer share a continuous outer frame. The Coach has no external margins or separate rounded corners; the divider has a filled blue background to avoid transparent seams. Coach and caption scrollbars use thin blue styling. Conversation background transparency remains independent.

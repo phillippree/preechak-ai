@@ -123,11 +123,11 @@ class InterviewCoach {
             return Promise.resolve({ success: false, error: 'This capture is already being processed' });
         this.pendingCapture = null;
         const labels = {
-            new_problem: 'Analyze as a new problem',
+            new_problem: 'New problem',
             review_code: 'Review my code',
             continue_code: 'Help me continue',
             full_code: 'Show full corrected code',
-            explain_visual: 'Explain this code visually',
+            explain_visual: 'Explain visually',
         };
         const imageIds = action === 'new_problem' ? capture.imageIds.slice(-1) : capture.imageIds;
         return this.request(labels[action], {
@@ -146,8 +146,19 @@ class InterviewCoach {
         this.publish();
     }
 
+    setMuted(source, muted) {
+        this.sources[source] = { ...this.sources[source], muted };
+        if (muted) {
+            this.drafts.delete(source);
+            clearTimeout(this.timer);
+            this.controller?.abort();
+            this.revision++;
+        }
+        this.publish();
+    }
+
     transcript(event) {
-        if (this.closed || typeof event.text !== 'string' || !event.text.trim()) return;
+        if (this.closed || this.sources[event.source]?.muted || typeof event.text !== 'string' || !event.text.trim()) return;
         if (!event.final) {
             this.drafts.set(event.source, event);
             // A new utterance makes advice based on the old conversation stale.
@@ -219,6 +230,9 @@ class InterviewCoach {
             }
             const request = { id, text, screenshotPrompt, kind, imageIds: [...imageIds], captureId, captureAction, resolve };
             this.explicit.push(request);
+            if (captureAction) {
+                this.emit('new-response', { requestId: id, prompt: text, text: '', timestamp: this.now(), captureId });
+            }
             this.addTurn({ id: request.id, source: 'You', kind, text, imageIds });
             clearTimeout(this.timer);
             this.timer = setTimeout(() => void this.evaluate(), 0);
@@ -406,7 +420,8 @@ class InterviewCoach {
                 if (request || ['solutions', 'patch'].includes(result.action)) {
                     const prompt = request?.text || `Updated solution: ${this.problem.title}`;
                     this.emit('new-response', {
-                        prompt: request?.kind === 'screen-request' ? 'Screen analysis' : prompt,
+                        prompt: request?.kind === 'screen-request' && !request.captureAction ? 'Screen analysis' : prompt,
+                        ...(request?.captureAction ? { requestId: request.id } : {}),
                         text: result.output,
                         timestamp: this.now(),
                         problemId: this.problemId,

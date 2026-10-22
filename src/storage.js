@@ -78,7 +78,7 @@ const DEFAULT_PREFERENCES = {
     geminiTranscriptionModel: 'gemini-3.5-transcribe-live',
     audioInputDevice: 'default',
     fontSize: 'medium',
-    backgroundTransparency: 0.8,
+    backgroundTransparency: 0.4,
     stealthMode: true,
     googleSearchEnabled: false,
     localLlmModel: 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M',
@@ -86,7 +86,7 @@ const DEFAULT_PREFERENCES = {
     geminiHttpLocalWhisper: false,
     geminiHttpTranscriptionMode: 'whisper',
     vadEnergyThreshold: 95,
-    theme: 'deepteal',
+    theme: 'windowsblue',
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults

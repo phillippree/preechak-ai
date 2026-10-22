@@ -7,6 +7,7 @@ const { getSystemPrompt } = require('./prompts');
 const {
     sendToRenderer,
     initializeNewSession,
+    getAudioMuteState,
     saveConversationTurn,
     saveScreenAnalysis,
     sendToGroq,
@@ -30,6 +31,25 @@ let httpConversationHistory = [];
 let isProcessingTurn = false;
 let pendingSpeech = [];
 let sessionGeneration = 0;
+const mutedAudio = { You: false, Interviewer: false };
+const audioEpoch = { You: 0, Interviewer: 0 };
+
+function setAudioMuted({ micMuted, speakerMuted }) {
+    for (const [source, muted] of [
+        ['You', micMuted],
+        ['Interviewer', speakerMuted],
+    ]) {
+        if (typeof muted !== 'boolean') continue;
+        if (mutedAudio[source] !== muted) audioEpoch[source]++;
+        mutedAudio[source] = muted;
+        if (muted) {
+            audioSegmenters.get(source)?.reset();
+            pendingSpeech = pendingSpeech.filter(item => item.speaker !== source);
+        }
+        transcriptionStreams?.mute(source, muted);
+        coach?.setMuted(source, muted);
+    }
+}
 
 // Summary & context budgeting state
 let runningSummary = '';
@@ -273,6 +293,7 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
     activeAttachments = [];
     imageCache.clear();
 
+    setAudioMuted(getAudioMuteState?.() || {});
     const prefs = getPreferences() || {};
     if (prefs.conversationCoaching === true) {
         const { InterviewCoach } = require('./interview-coach');
@@ -309,15 +330,17 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
                     }))
                     .filter(image => image.data),
         });
+        for (const source of ['You', 'Interviewer']) coach.setMuted(source, mutedAudio[source]);
         const sessionCoach = coach;
         const sources = prefs.audioMode === 'mic_only' ? ['You'] : prefs.audioMode === 'speaker_only' ? ['Interviewer'] : ['You', 'Interviewer'];
         transcriptionStreams = new GeminiTranscription({
             apiKey,
             language,
             sources,
+            mutedSources: sources.filter(source => mutedAudio[source]),
             model: prefs.geminiTranscriptionModel || 'gemini-3.5-transcribe-live',
             onTranscript: event => {
-                if (isCurrent()) sessionCoach.transcript(event);
+                if (isCurrent() && !mutedAudio[event.source]) sessionCoach.transcript(event);
             },
             onStatus: event => {
                 if (isCurrent()) sessionCoach.status(event);
@@ -622,6 +645,7 @@ function processHttpAudioChunk(pcmBuffer, speaker = 'Interviewer') {
         return;
     }
     const source = speaker === 'You' ? 'You' : 'Interviewer';
+    if (mutedAudio[source]) return;
     if (transcriptionStreams) {
         transcriptionStreams.send(source, pcmBuffer);
         return;
@@ -653,7 +677,7 @@ function processHttpAudioChunk(pcmBuffer, speaker = 'Interviewer') {
 }
 
 async function handleSpeechSegment(pcmBuffer, speaker = 'Interviewer', snapshottedAttachmentIds = null) {
-    if (!httpSessionActive || transcriptionMode === 'none') return;
+    if (!httpSessionActive || transcriptionMode === 'none' || mutedAudio[speaker]) return;
 
     // Ignore segments shorter than 0.4 seconds (24000 * 2 * 0.4 = 19200 bytes)
     if (pcmBuffer.length < 19200) {
@@ -669,7 +693,8 @@ async function handleSpeechSegment(pcmBuffer, speaker = 'Interviewer', snapshott
         return;
     }
     const generation = sessionGeneration;
-    const isCurrent = () => httpSessionActive && generation === sessionGeneration;
+    const epoch = audioEpoch[speaker];
+    const isCurrent = () => httpSessionActive && generation === sessionGeneration && !mutedAudio[speaker] && epoch === audioEpoch[speaker];
 
     isProcessingTurn = true;
     const wavBuffer = createWavBuffer(pcmBuffer, 24000, 1, 16);
@@ -1071,10 +1096,7 @@ module.exports = {
     compareWithPrevious,
     selectHistoryAttachment,
     clearActiveAttachments,
-    setAudioMuted: ({ micMuted, speakerMuted }) => {
-        transcriptionStreams?.mute('You', micMuted);
-        transcriptionStreams?.mute('Interviewer', speakerMuted);
-    },
+    setAudioMuted,
     setCaptureStatus: event => {
         if (!coach) return { success: false };
         coach.sources[event.source] = { ...coach.sources[event.source], captureStatus: event.status, captureMessage: event.message };
