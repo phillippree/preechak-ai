@@ -146,18 +146,13 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
-    const apiKey = await storage.getApiKey();
-    if (apiKey) {
-        const prefs = await storage.getPreferences();
-        const customPrompt =
-            prefs.customPrompts && typeof prefs.customPrompts[profile] === 'string' ? prefs.customPrompts[profile] : prefs.customPrompt || '';
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, customPrompt, profile, language);
-        if (success) {
-            preechakAi.setStatus('Live');
-        }
-        return success;
-    }
-    return false;
+    const prefs = await storage.getPreferences();
+    const customPrompt =
+        prefs.customPrompts && typeof prefs.customPrompts[profile] === 'string' ? prefs.customPrompts[profile] : prefs.customPrompt || '';
+    // Resolve provider credentials in the main process, never pass the OpenAI key here.
+    const success = await ipcRenderer.invoke('initialize-gemini', '', customPrompt, profile, language);
+    if (success) preechakAi.setStatus('Live');
+    return success;
 }
 
 async function initializeLocal(profile = 'interview') {

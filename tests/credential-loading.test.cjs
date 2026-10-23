@@ -20,7 +20,7 @@ test('renderer bootstrap resolves services relative to index.html, as Electron d
 
 function loadMainView(storage) {
     let source = fs.readFileSync(path.join(root, 'src/components/views/MainView.js'), 'utf8');
-    source = source.replace(/^import .*;\n/, '').replace('export class MainView', 'class MainView');
+    source = source.replace(/^import .*;\n/gm, '').replace('export class MainView', 'class MainView');
     const context = {
         html: () => '',
         css: () => '',
@@ -38,7 +38,7 @@ function loadMainView(storage) {
     return { view, input };
 }
 
-test('saved Gemini key reaches password input even when config loading fails', async () => {
+test('legacy home does not populate duplicate key fields when config loading fails', async () => {
     const { view, input } = loadMainView({
         getConfig: async () => {
             throw new Error('config unavailable');
@@ -47,11 +47,11 @@ test('saved Gemini key reaches password input even when config loading fails', a
         getCredentials: async () => ({ apiKey: 'test-key' }),
     });
     await view._loadFromStorage();
-    assert.equal(view._geminiKey, 'test-key');
-    assert.equal(input.value, 'test-key');
+    assert.equal(view._geminiKey, undefined);
+    assert.equal(input.value, '');
 });
 
-test('saved Gemini key loads independently of a preferences failure', async () => {
+test('legacy home does not populate duplicate key fields when preferences fail', async () => {
     const { view, input } = loadMainView({
         getConfig: async () => ({}),
         getPreferences: async () => {
@@ -60,7 +60,7 @@ test('saved Gemini key loads independently of a preferences failure', async () =
         getCredentials: async () => ({ apiKey: 'test-key' }),
     });
     await view._loadFromStorage();
-    assert.equal(input.value, 'test-key');
+    assert.equal(input.value, '');
 });
 
 test('renderer library bootstrap tolerates Electron exposing module without exports', () => {
@@ -70,4 +70,21 @@ test('renderer library bootstrap tolerates Electron exposing module without expo
     vm.runInNewContext(script, context);
     assert.equal(context.window.exports, undefined);
     assert.equal(context.window.__temp_module, context.module);
+});
+
+test('home contains one provider settings component and no legacy Gemini key input', () => {
+    const source = fs.readFileSync(path.join(root, 'src/components/views/MainView.js'), 'utf8');
+    assert.equal((source.match(/<provider-settings/g) || []).length, 1);
+    assert.equal(source.includes('_saveGeminiKey'), false);
+    assert.equal(source.includes('>Gemini API Key</label>'), false);
+});
+
+test('API home exposes only provider settings and Start without legacy session options', () => {
+    const source = fs.readFileSync(path.join(root, 'src/components/views/MainView.js'), 'utf8');
+    const byok = source.slice(source.indexOf('    _renderByokMode()'), source.indexOf('    _renderLocalMode()'));
+    assert.match(byok, /<provider-settings/);
+    assert.match(byok, /_renderStartButton/);
+    assert.equal(byok.includes('Session settings'), false);
+    assert.equal(byok.includes('Connection Mode'), false);
+    assert.equal(byok.includes('type="checkbox"'), false);
 });

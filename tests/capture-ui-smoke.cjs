@@ -20,6 +20,14 @@ for (const [name, data] of Object.entries({
 ipcMain.handle('storage:update-preference', () => ({ success: true }));
 ipcMain.handle('whisper:get-status', () => ({ engineInstalled: false, models: {} }));
 ipcMain.handle('get-audio-mute-state', () => ({ isMicMuted: false, isSpeakerMuted: false }));
+ipcMain.handle('ai:get-settings', () => ({
+    coachingProvider: 'gemini',
+    transcriptionProvider: 'gemini',
+    openaiCoachingModel: 'gpt-6-luna',
+    hasGeminiKey: true,
+    hasOpenAIKey: false,
+}));
+ipcMain.handle('ai:save-settings', (_, settings) => ({ success: true, settings }));
 ipcMain.handle('get-app-version', () => '0.2.1');
 ipcMain.handle('coach:get-state', () => ({ active: false }));
 ipcMain.handle('gemini-http:get-attachments', () => ({ activeAttachmentIds: [], activeAttachments: [], screenshots: [] }));
@@ -49,11 +57,28 @@ app.whenReady().then(async () => {
         const rect = await win.webContents.executeJavaScript(`(async()=>{
   await customElements.whenDefined('preechak-ai-app');const app=document.querySelector('preechak-ai-app');
   for(let i=0;i<100&&!app._storageLoaded;i++)await new Promise(r=>setTimeout(r,20));
+  await customElements.whenDefined('provider-settings');
+  const home=app.shadowRoot.querySelector('main-view');
+  if(home){await home.updateComplete;if(home.shadowRoot.querySelector('.gemini-options'))throw new Error('Legacy Gemini options still visible');if(home.shadowRoot.querySelectorAll('provider-settings').length!==1 || home.shadowRoot.querySelector('input[type=password]'))throw new Error('Duplicate home API key field');}
+
+  const providers=document.createElement('provider-settings');document.body.append(providers);
+  for(let i=0;i<20&&!providers.settings;i++)await new Promise(r=>setTimeout(r,10));
+  await providers.updateComplete;
+  if(providers.shadowRoot.querySelectorAll('input[type=password]').length!==2)throw new Error('Provider key inputs missing');
+  const group=providers.shadowRoot.querySelector('[aria-label="Coaching and screen analysis"]');
+  group.querySelectorAll('button')[1].click();await providers.updateComplete;
+  providers.shadowRoot.querySelector('[aria-label="OpenAI coaching model"]').querySelectorAll('button')[1].click();await providers.updateComplete;
+  if(providers.settings.coachingProvider!=='openai' || providers.settings.openaiCoachingModel!=='gpt-6-sol')throw new Error('Provider/model selection failed');
+  if(providers.shadowRoot.querySelector('select') || providers.shadowRoot.querySelector('[title]'))throw new Error('Provider settings use native menus or tooltips');
+  await providers.save();if(providers.message.indexOf('Saved')!==0)throw new Error('Provider settings save failed');
+  providers.active=true;await providers.updateComplete;
+  if(!providers.shadowRoot.querySelector('fieldset').disabled)throw new Error('Provider settings not locked');
+  providers.remove();
   app.currentView='assistant';app.sessionActive=true;app._stealthMode=true;
   app.responses=[{prompt:'Review my code',text:'Carry is lost after the loop.\\n\\n\`\`\`python\\nif carry:\\n    digits.append(str(carry))\\n\`\`\`\\n\\n[Reference](https://example.com "Do not open a native tooltip")'}];
   await app.updateComplete;const view=app.shadowRoot.querySelector('assistant-view');await view.updateComplete;
   view._layoutLoading=false;view.coachExpanded=true;
-  view._coachEventReceived=true;view.coachState={active:true,sources:{},problem:{title:'Multiply strings'},recentTurns:[],drafts:[],capture:{id:'capture-test',intent:'ambiguous',reason:'Is this starter code or your partial implementation?',needsChoice:true,pending:false}};
+  view._coachEventReceived=true;view.coachState={active:true,sessionInfo:{coaching:{provider:'openai',model:'gpt-6-luna'},transcription:{provider:'gemini',model:'gemini-3.5-transcribe-live'}},sources:{},problem:{title:'Multiply strings'},recentTurns:[],drafts:[],capture:{id:'capture-test',intent:'ambiguous',reason:'Is this starter code or your partial implementation?',needsChoice:true,pending:false}};
   await view.updateComplete;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   await new Promise(r=>setTimeout(r,450));
   window.__captureView=view;const button=view.shadowRoot.querySelectorAll('.capture-buttons button')[1];button.scrollIntoView();
@@ -126,6 +151,8 @@ app.whenReady().then(async () => {
         await new Promise(r => setTimeout(r, 100));
         const result = await win.webContents.executeJavaScript(`(async()=>{
   const v=window.__captureView;
+  const badges=v.shadowRoot.querySelector('.session-providers');if(!badges || !badges.textContent.includes('OpenAI · gpt-6-luna') || !badges.textContent.includes('Gemini · gemini-3.5-transcribe-live'))throw new Error('Active provider labels incorrect');
+
   const sectionHost=document.createElement('div');
   sectionHost.innerHTML=v.renderProtectedMarkdown('## What the question is asking\\nStart at index 0; reach the last index.\\n\\n\\x60\\x60\\x60text\\n[2,3,1] start -> goal\\n\\x60\\x60\\x60\\n\\n## Chalkboard Walkthrough: Solution 1\\nExample trace\\n\\n## Solution 1: Basic\\n### Code\\n\\x60\\x60\\x60python\\nreturn 2\\n\\x60\\x60\\x60\\n\\n## Chalkboard Walkthrough: Solution 2\\nOptimized trace\\n\\n## Solution 2: Optimized\\nOptimized code\\n\\n## What to Say / Edge Cases\\nOne-element input');
   const sections=[...sectionHost.querySelectorAll('details.answer-section')];

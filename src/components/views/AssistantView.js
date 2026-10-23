@@ -810,6 +810,27 @@ export class AssistantView extends LitElement {
                 gap: 10px;
                 padding: 12px 20px;
             }
+            .conversation-title {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+                min-width: 0;
+            }
+            .session-providers {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                min-width: 0;
+            }
+            .provider-badge {
+                border: 1px solid var(--border);
+                border-radius: 5px;
+                padding: 4px 8px;
+                font-size: 11px;
+                color: var(--text-secondary);
+                overflow-wrap: anywhere;
+            }
             .conversation-heading h2 {
                 margin: 0;
                 font-size: 20px;
@@ -2514,7 +2535,24 @@ export class AssistantView extends LitElement {
 
         return html`
             <div class="conversation-heading">
-                <h2>Conversation</h2>
+                <div class="conversation-title">
+                    <h2>Conversation</h2>
+                    ${this.coachState?.active && this.coachState.sessionInfo
+                        ? html`
+                              <div class="session-providers" aria-label="Active session providers">
+                                  ${[
+                                      ['coaching', 'Coaching'],
+                                      ['transcription', 'Transcription'],
+                                  ].map(([role, label]) => {
+                                      const info = this.coachState.sessionInfo[role];
+                                      return html`<span class="provider-badge"
+                                          >${label}: ${info.provider === 'openai' ? 'OpenAI' : 'Gemini'} · ${info.model}</span
+                                      >`;
+                                  })}
+                              </div>
+                          `
+                        : ''}
+                </div>
                 <label class="readability-control"
                     >Background opacity
                     <input

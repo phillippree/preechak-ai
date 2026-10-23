@@ -785,7 +785,7 @@ export class PreechakAiApp extends LitElement {
         this.addNewResponse({
             type: 'status_event',
             eventType: 'mute_change',
-            text: this._isMicMuted ? 'Microphone muted (Mic audio not sent to Gemini)' : 'Microphone unmuted (Mic audio active)',
+            text: this._isMicMuted ? 'Microphone muted (Mic audio is not being sent)' : 'Microphone unmuted (Mic audio active)',
             isMuted: this._isMicMuted,
             channel: 'mic',
             timestamp: Date.now(),
@@ -804,7 +804,7 @@ export class PreechakAiApp extends LitElement {
         this.addNewResponse({
             type: 'status_event',
             eventType: 'mute_change',
-            text: this._isSpeakerMuted ? 'System Audio muted (Interviewer audio not sent to Gemini)' : 'System Audio unmuted (System audio active)',
+            text: this._isSpeakerMuted ? 'System Audio muted (System audio is not being sent)' : 'System Audio unmuted (System audio active)',
             isMuted: this._isSpeakerMuted,
             channel: 'speaker',
             timestamp: Date.now(),
@@ -847,7 +847,7 @@ export class PreechakAiApp extends LitElement {
             }
         } else {
             const apiKey = await preechakAi.storage.getApiKey();
-            if (!apiKey || apiKey === '') {
+            if ((!apiKey || apiKey === '') && prefs.coachingProvider !== 'openai') {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && mainView.triggerApiKeyError) {
                     mainView.triggerApiKeyError();
@@ -1053,6 +1053,7 @@ export class PreechakAiApp extends LitElement {
             case 'customize':
                 return html`
                     <customize-view
+                        .sessionActive=${this.sessionActive}
                         .selectedProfile=${this.selectedProfile}
                         .selectedLanguage=${this.selectedLanguage}
                         .selectedScreenshotInterval=${this.selectedScreenshotInterval}

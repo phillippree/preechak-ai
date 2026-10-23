@@ -1,3 +1,4 @@
+import './ProviderSettings.js';
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 
 const LOCAL_LLM_PRESETS = [
@@ -933,7 +934,6 @@ export class MainView extends LitElement {
         // Internal state
         _mode: { state: true },
         _token: { state: true },
-        _geminiKey: { state: true },
         _groqKey: { state: true },
         _openaiKey: { state: true },
         _apiTransportMode: { state: true },
@@ -973,7 +973,6 @@ export class MainView extends LitElement {
 
         this._mode = 'byok';
         this._token = '';
-        this._geminiKey = '';
         this._groqKey = '';
         this._openaiKey = '';
         this._apiTransportMode = 'websocket';
@@ -1023,7 +1022,6 @@ export class MainView extends LitElement {
 
             // Load keys
             this._token = creds.cloudToken || '';
-            this._geminiKey = creds.apiKey || '';
             this._groqKey = creds.groqApiKey || '';
             this._openaiKey = creds.openaiKey || '';
             this._apiTransportMode = config.apiTransportMode || 'websocket';
@@ -1043,11 +1041,6 @@ export class MainView extends LitElement {
 
             this.requestUpdate();
             await this.updateComplete;
-            const keyInput = this.shadowRoot?.querySelector('input[type="password"]');
-            if (keyInput && this._geminiKey) {
-                keyInput.value = this._geminiKey;
-            }
-
             if (this._geminiHttpLocalWhisper || this._mode === 'local') {
                 this._checkWhisperStatus();
             }
@@ -1090,12 +1083,6 @@ export class MainView extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
-        if (changedProperties.has('_geminiKey')) {
-            const keyInput = this.shadowRoot?.querySelector('input[type="password"]');
-            if (keyInput && keyInput.value !== this._geminiKey) {
-                keyInput.value = this._geminiKey;
-            }
-        }
         if (changedProperties.has('_mode')) {
             // Stop old animation when switching modes
             if (this._animId) {
@@ -1229,13 +1216,6 @@ export class MainView extends LitElement {
             const creds = await preechakAi.storage.getCredentials().catch(() => ({}));
             await preechakAi.storage.setCredentials({ ...creds, cloudToken: val });
         } catch (e) {}
-        this.requestUpdate();
-    }
-
-    async _saveGeminiKey(val) {
-        this._geminiKey = val;
-        this._keyError = false;
-        await preechakAi.storage.setApiKey(val);
         this.requestUpdate();
     }
 
@@ -1587,20 +1567,7 @@ export class MainView extends LitElement {
     async _handleStart() {
         if (this.isInitializing || this.downloadProgress.active) return;
 
-        if (this._mode === 'byok') {
-            let key = this._geminiKey.trim();
-            if (!key && typeof preechakAi !== 'undefined' && preechakAi.storage) {
-                key = ((await preechakAi.storage.getApiKey().catch(() => '')) || '').trim();
-                if (key) {
-                    this._geminiKey = key;
-                }
-            }
-            if (!key) {
-                this._keyError = true;
-                this.requestUpdate();
-                return;
-            }
-        } else if (this._mode === 'local') {
+        if (this._mode === 'local') {
             if (!this._localLlmModel.trim()) {
                 return;
             }
@@ -1611,6 +1578,11 @@ export class MainView extends LitElement {
 
     triggerApiKeyError() {
         this._keyError = this._mode !== 'local';
+        const providers = this.shadowRoot?.querySelector('provider-settings');
+        if (providers && this._keyError) {
+            providers.message = 'Check and save your selected providers’ API keys here before starting.';
+            providers.scrollIntoView({ block: 'nearest' });
+        }
         this.requestUpdate();
         setTimeout(() => {
             this._tokenError = false;
@@ -1761,132 +1733,7 @@ export class MainView extends LitElement {
 
     _renderByokMode() {
         return html`
-            <details class="config-section">
-                <summary class="config-summary">
-                    <span class="config-summary-text">
-                        <span class="config-summary-title">Gemini API & Connection</span>
-                        <span class="config-summary-description"
-                            >${this._conversationCoaching
-                                ? 'Conversation Coach · Gemini'
-                                : this._apiTransportMode === 'http'
-                                  ? 'HTTP Buffered Requests'
-                                  : 'WebSocket Live Streaming'}</span
-                        >
-                    </span>
-                    ${this._renderConfigChevron()}
-                </summary>
-                <div class="config-content">
-                    <div class="form-group">
-                        <label class="form-label">Gemini API Key</label>
-                        <input
-                            type="password"
-                            placeholder="Required"
-                            value="${this._geminiKey || ''}"
-                            .value="${this._geminiKey || ''}"
-                            @input=${e => this._saveGeminiKey(e.target.value)}
-                            class=${this._keyError ? 'error' : ''}
-                        />
-                        <div class="form-hint">
-                            <span class="link" @click=${() => this.onExternalLink('https://aistudio.google.com/apikey')}>Get Gemini key</span>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">
-                            <input
-                                type="checkbox"
-                                .checked=${this._conversationCoaching}
-                                ?disabled=${this.isSessionActive}
-                                @change=${async e => {
-                                    this._conversationCoaching = e.target.checked;
-                                    await preechakAi.storage.updatePreference('conversationCoaching', this._conversationCoaching);
-                                }}
-                            />
-                            Conversation Coach
-                        </label>
-                        <div class="form-hint">
-                            Independent Gemini live captions, shared screenshot context, and selective coaching. Select Both Speaker and Microphone in
-                            Audio Input to include both sides. Audio is sent to Google; this mode uses Gemini only.
-                        </div>
-                    </div>
-                    ${this._conversationCoaching
-                        ? html`
-                              <div class="form-group">
-                                  <label class="form-label">Coaching and Solution Model</label>
-                                  <input
-                                      type="text"
-                                      .value=${this._geminiHttpModel}
-                                      ?disabled=${this.isSessionActive}
-                                      @input=${e => this._saveGeminiHttpModel(e.target.value)}
-                                  />
-                                  <div class="form-hint">
-                                      Live transcription uses gemini-3.5-transcribe-live. Your key must have access to that model.
-                                  </div>
-                              </div>
-                          `
-                        : ''}
-                    <div class="form-group">
-                        <label class="form-label">Connection Mode</label>
-                        <select
-                            ?disabled=${this._conversationCoaching || this.isSessionActive}
-                            .value=${this._apiTransportMode}
-                            @change=${e => this._saveApiTransportMode(e.target.value)}
-                        >
-                            <option value="websocket">Live Streaming (WebSocket) — Gemini Live</option>
-                            <option value="http">Buffered Requests (HTTP) — Any Gemini Model</option>
-                        </select>
-                        <div class="form-hint">
-                            ${this._apiTransportMode === 'http'
-                                ? 'Buffers audio segments upon pauses and queries standard Gemini models via HTTP REST.'
-                                : 'Real-time bidirectional WebSocket streaming connection.'}
-                        </div>
-                    </div>
-
-                    ${this._apiTransportMode === 'http' && !this._conversationCoaching
-                        ? html`
-                              <div class="form-group">
-                                  <label class="form-label">Gemini HTTP Model</label>
-                                  <input type="text" .value=${this._geminiHttpModel} @input=${e => this._saveGeminiHttpModel(e.target.value)} />
-                                  <div class="form-hint">Examples: gemini-3.8-flash, gemini-2.0-flash, gemini-1.5-pro</div>
-                              </div>
-
-                              <div class="form-group">
-                                  <label class="form-label">Audio Transcription</label>
-                                  <select
-                                      class="control"
-                                      .value=${this._geminiHttpTranscriptionMode}
-                                      ?disabled=${this.isSessionActive}
-                                      @change=${e => this._saveGeminiHttpTranscriptionMode(e.target.value)}
-                                  >
-                                      <option value="whisper" ?selected=${this._geminiHttpTranscriptionMode === 'whisper'}>
-                                          Local Whisper (whisper.cpp · Offline)
-                                      </option>
-                                      <option value="gemini" ?selected=${this._geminiHttpTranscriptionMode === 'gemini'}>Google Gemini Cloud</option>
-                                      <option value="none" ?selected=${this._geminiHttpTranscriptionMode === 'none'}>
-                                          No Transcription (Manual Screenshots & Text Only)
-                                      </option>
-                                  </select>
-                                  <div class="form-hint">
-                                      ${this._geminiHttpTranscriptionMode === 'whisper'
-                                          ? 'Audio is transcribed locally with whisper.cpp. Only recognized text is sent to Gemini.'
-                                          : this._geminiHttpTranscriptionMode === 'none'
-                                            ? 'Audio listening is disabled. No sound is sent anywhere; ask questions via screenshots or typing.'
-                                            : 'Audio is buffered and transcribed remotely by Google Gemini.'}
-                                  </div>
-                              </div>
-
-                              ${this._geminiHttpTranscriptionMode === 'whisper' ? this._renderWhisperSection() : ''}
-                          `
-                        : html`
-                              <div class="form-group">
-                                  <label class="form-label">Gemini Live Model</label>
-                                  <input type="text" .value=${this._geminiLiveModel} @input=${e => this._saveGeminiLiveModel(e.target.value)} />
-                                  <div class="form-hint">Live WebSocket model (e.g. gemini-3.1-flash-live-preview)</div>
-                              </div>
-                          `}
-                </div>
-            </details>
-
+            <provider-settings .active=${this.isSessionActive}></provider-settings>
             ${this._renderStartButton()}
         `;
     }

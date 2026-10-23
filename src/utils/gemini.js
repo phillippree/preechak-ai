@@ -8,6 +8,7 @@ const {
     getAvailableModel,
     incrementLimitCount,
     getApiKey,
+    getCredentials,
     getGroqApiKey,
     incrementCharUsage,
     getConfig,
@@ -1303,6 +1304,72 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     // Store the geminiSessionRef globally for reconnection access
     global.geminiSessionRef = geminiSessionRef;
 
+    const providerSettings = () => {
+        const prefs = getPreferences() || {};
+        const credentials = getCredentials();
+        return {
+            coachingProvider: prefs.coachingProvider || 'gemini',
+            transcriptionProvider: prefs.transcriptionProvider || 'gemini',
+            openaiCoachingModel: prefs.openaiCoachingModel || 'gpt-6-luna',
+            geminiCoachingModel: getConfig().geminiHttpModel || 'gemini-3.8-flash',
+            hasGeminiKey: Boolean(credentials.geminiApiKey || credentials.apiKey),
+            hasOpenAIKey: Boolean(credentials.openaiApiKey),
+        };
+    };
+    ipcMain.handle('ai:get-settings', () => providerSettings());
+    ipcMain.handle('ai:save-settings', (_, payload) => {
+        try {
+            if (getGeminiHttp().isGeminiHttpActive() || geminiSessionRef.current || isCloudActive() || getLocalAi().isLocalSessionActive())
+                throw new Error('End the session before changing providers');
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Invalid provider settings');
+            for (const field of ['coachingProvider', 'transcriptionProvider'])
+                if (!['gemini', 'openai'].includes(payload[field])) throw new Error('Invalid provider');
+            if (!require('./ai-providers').OPENAI_MODELS.includes(payload.openaiCoachingModel)) throw new Error('Invalid OpenAI model');
+            if (
+                payload.geminiCoachingModel !== undefined &&
+                (typeof payload.geminiCoachingModel !== 'string' || !/^gemini-[a-zA-Z0-9._-]{1,100}$/.test(payload.geminiCoachingModel))
+            )
+                throw new Error('Invalid Gemini model');
+            const credentials = {};
+            for (const field of ['geminiApiKey', 'openaiApiKey']) {
+                if (payload[field] !== undefined) {
+                    if (typeof payload[field] !== 'string' || payload[field].length > 512 || /[\r\n\x00]/.test(payload[field]))
+                        throw new Error('Invalid API key');
+                    credentials[field] = payload[field].trim();
+                }
+            }
+            const storage = require('../storage');
+            if (Object.keys(credentials).length && !storage.setCredentials(credentials)) throw new Error('Could not save API keys');
+            for (const field of ['coachingProvider', 'transcriptionProvider', 'openaiCoachingModel'])
+                if (!storage.updatePreference(field, payload[field])) throw new Error('Could not save provider settings');
+            if (payload.geminiCoachingModel !== undefined && !storage.updateConfig('geminiHttpModel', payload.geminiCoachingModel))
+                throw new Error('Could not save Gemini model');
+            if (!storage.updatePreference('conversationCoaching', true)) throw new Error('Could not save session settings');
+            return { success: true, settings: providerSettings() };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+    ipcMain.handle('ai:check-connection', async (_, provider) => {
+        if (!['gemini', 'openai'].includes(provider)) return { success: false, error: 'Invalid provider' };
+        try {
+            const credentials = getCredentials();
+            const key = provider === 'openai' ? credentials.openaiApiKey : credentials.geminiApiKey || credentials.apiKey;
+            if (!key) throw new Error('Save an API key first');
+            const response = await fetch(
+                provider === 'openai' ? 'https://api.openai.com/v1/models' : 'https://generativelanguage.googleapis.com/v1beta/models',
+                {
+                    headers: provider === 'openai' ? { Authorization: `Bearer ${key}` } : { 'x-goog-api-key': key },
+                    signal: AbortSignal.timeout(10000),
+                }
+            );
+            if (!response.ok) throw new Error(`Connection failed (${response.status}). Check your key and account access.`);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: 'Connection check failed. Check your key, connection, and account access.' };
+        }
+    });
+
     ipcMain.handle('initialize-cloud', async (event, token, profile, userContext) => {
         try {
             currentProviderMode = 'cloud';
@@ -1323,12 +1390,24 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     });
 
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
+        apiKey = getApiKey() || apiKey;
         const config = getConfig();
         const transportMode = config.apiTransportMode || 'websocket';
 
-        if (transportMode === 'http' || getPreferences()?.conversationCoaching === true) {
+        const prefs = { ...(getPreferences() || {}), conversationCoaching: true };
+        const useProviders = prefs.conversationCoaching === true || prefs.coachingProvider === 'openai' || prefs.transcriptionProvider === 'openai';
+        let selection = null;
+        if (useProviders) {
+            try {
+                selection = require('./ai-providers').sessionSelection(prefs, getCredentials(), config);
+            } catch (error) {
+                sendToRenderer('update-status', `Error: ${error.message}`);
+                return false;
+            }
+        }
+        if (transportMode === 'http' || useProviders) {
             currentProviderMode = 'byok_http';
-            const success = await getGeminiHttp().initializeGeminiHttpSession(apiKey, customPrompt, profile, language);
+            const success = await getGeminiHttp().initializeGeminiHttpSession(apiKey, customPrompt, profile, language, selection);
             return success;
         }
 
@@ -1426,7 +1505,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
         if (currentProviderMode === 'byok_http') {
             try {
-                getGeminiHttp().processHttpAudioChunk(pcmBuffer, activeSpeaker || 'Interviewer');
+                getGeminiHttp().processHttpAudioChunk(pcmBuffer, 'Interviewer');
                 return { success: true };
             } catch (error) {
                 console.error('Error sending HTTP audio:', error);

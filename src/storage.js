@@ -21,6 +21,8 @@ const DEFAULT_CONFIG = {
 
 const DEFAULT_CREDENTIALS = {
     apiKey: '',
+    geminiApiKey: '',
+    openaiApiKey: '',
     groqApiKey: '',
 };
 
@@ -67,6 +69,10 @@ const DEFAULT_PREFERENCES = {
     manualScreenshotPrompt: DEFAULT_MANUAL_SCREENSHOT_PROMPT,
     screenshotPrompts: DEFAULT_SCREENSHOT_PROMPTS,
     providerMode: 'byok',
+    coachingProvider: 'gemini',
+    transcriptionProvider: 'gemini',
+    openaiCoachingModel: 'gpt-6-luna',
+    openaiTranscriptionModel: 'gpt-live-transcribe',
     selectedProfile: 'interview',
     selectedLanguage: 'en-US',
     selectedScreenshotInterval: '5',
@@ -260,17 +266,30 @@ function updateConfig(key, value) {
 // ============ CREDENTIALS ============
 
 function getCredentials() {
-    return readJsonFile(getCredentialsPath(), DEFAULT_CREDENTIALS);
+    const credentials = readJsonFile(getCredentialsPath(), DEFAULT_CREDENTIALS);
+    const { reveal, protect } = require('./utils/credential-protection');
+    const stored = { ...credentials };
+    for (const key of ['apiKey', 'geminiApiKey', 'openaiApiKey']) credentials[key] = reveal(credentials[key] || '');
+    if (!credentials.geminiApiKey) credentials.geminiApiKey = credentials.apiKey || '';
+    const migrated = { ...stored };
+    for (const key of ['apiKey', 'geminiApiKey', 'openaiApiKey'])
+        migrated[key] = stored[key]?.startsWith('os-encrypted:') ? stored[key] : protect(credentials[key] || '');
+    if (JSON.stringify(migrated) !== JSON.stringify(stored)) writeJsonFile(getCredentialsPath(), migrated);
+    return credentials;
 }
 
 function setCredentials(credentials) {
     const current = getCredentials();
     const updated = { ...current, ...credentials };
+    if (typeof credentials.apiKey === 'string') updated.geminiApiKey = credentials.apiKey;
+    else if (typeof credentials.geminiApiKey === 'string') updated.apiKey = credentials.geminiApiKey;
+    const { protect } = require('./utils/credential-protection');
+    for (const key of ['apiKey', 'geminiApiKey', 'openaiApiKey']) updated[key] = protect(updated[key] || '');
     return writeJsonFile(getCredentialsPath(), updated);
 }
 
 function getApiKey() {
-    return getCredentials().apiKey || '';
+    return getCredentials().geminiApiKey || getCredentials().apiKey || '';
 }
 
 function setApiKey(apiKey) {

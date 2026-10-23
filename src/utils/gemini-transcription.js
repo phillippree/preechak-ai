@@ -30,17 +30,37 @@ class GeminiTranscription {
         }
     }
 
+    connection() {
+        return {
+            url:
+                'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=' +
+                encodeURIComponent(this.apiKey),
+            headers: { 'x-goog-api-key': this.apiKey },
+        };
+    }
+    setupMessage() {
+        return {
+            setup: {
+                model: `models/${this.model}`,
+                generationConfig: { responseModalities: ['TEXT'] },
+                inputAudioTranscription: { languageCodes: this.language ? [this.language] : [] },
+            },
+        };
+    }
+    normalizeMessage(message) {
+        return message;
+    }
+    audioMessage(pcm) {
+        return { realtimeInput: { audio: { data: pcm.toString('base64'), mimeType: 'audio/pcm;rate=24000' } } };
+    }
+    afterAudio() {}
+
     connect(state) {
         if (this.closed || state.muted) return Promise.resolve();
         const epoch = ++state.epoch;
         return new Promise((resolve, reject) => {
-            const socket = new this.Socket(
-                'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=' +
-                    encodeURIComponent(this.apiKey),
-                {
-                    headers: { 'x-goog-api-key': this.apiKey },
-                }
-            );
+            const connection = this.connection();
+            const socket = new this.Socket(connection.url, { headers: connection.headers });
             state.socket = socket;
             state.ready = false;
             let settled = false;
@@ -61,21 +81,14 @@ class GeminiTranscription {
             };
             socket.on('open', () => {
                 if (!current()) return socket.close();
-                socket.send(
-                    JSON.stringify({
-                        setup: {
-                            model: `models/${this.model}`,
-                            generationConfig: { responseModalities: ['TEXT'] },
-                            inputAudioTranscription: { languageCodes: this.language ? [this.language] : [] },
-                        },
-                    })
-                );
+                socket.send(JSON.stringify(this.setupMessage()));
             });
             socket.on('message', raw => {
                 if (!current()) return;
                 let message;
                 try {
-                    message = JSON.parse(raw.toString());
+                    message = this.normalizeMessage(JSON.parse(raw.toString()), state);
+                    if (!message) return;
                 } catch {
                     return;
                 }
@@ -111,11 +124,11 @@ class GeminiTranscription {
                     if (typeof part?.text !== 'string' || !part.text.trim()) continue;
                     const at = this.now();
                     this.onTranscript({
-                        id: `${state.source}-${state.epoch}-${state.sequence}`,
+                        id: part.id || `${state.source}-${state.epoch}-${state.sequence}`,
                         source: state.source,
                         text: part.text.trim(),
                         final: isFinal,
-                        startedAt: state.startedAt || at,
+                        startedAt: part.startedAt || state.startedAt || at,
                         endedAt: at,
                     });
                     if (isFinal) {
@@ -140,6 +153,9 @@ class GeminiTranscription {
                 if (!current()) return;
                 state.ready = false;
                 state.startedAt = null;
+                state.turnAudio = null;
+                state.items = null;
+                state.committedOnsets = [];
                 this.onStatus({ source: state.source, status: 'reconnecting', message: 'Audio gap; speech during recovery may be missing.' });
                 if (state.attempts++ >= 5) {
                     this.onStatus({ source: state.source, status: 'error', message: 'Transcription disconnected. Restart the session.' });
@@ -172,7 +188,8 @@ class GeminiTranscription {
             return;
         }
         try {
-            state.socket.send(JSON.stringify({ realtimeInput: { audio: { data: pcm.toString('base64'), mimeType: 'audio/pcm;rate=24000' } } }));
+            state.socket.send(JSON.stringify(this.audioMessage(pcm)));
+            this.afterAudio(state, pcm);
         } catch {
             state.socket.close();
         }
@@ -189,6 +206,9 @@ class GeminiTranscription {
         state.epoch++;
         state.ready = false;
         state.startedAt = null;
+        state.turnAudio = null;
+        state.items = null;
+        state.committedOnsets = [];
         state.queue = [];
         state.bytes = 0;
         state.attempts = 0;

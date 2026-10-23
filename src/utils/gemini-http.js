@@ -272,7 +272,7 @@ function switchSessionProfile(newProfile, customPrompt = '') {
     return { success: true, profile: newProfile, systemPrompt: newSystemPrompt };
 }
 
-async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US') {
+async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', selection = null) {
     coach?.close();
     transcriptionStreams?.close();
     coach = null;
@@ -295,7 +295,7 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
 
     setAudioMuted(getAudioMuteState?.() || {});
     const prefs = getPreferences() || {};
-    if (prefs.conversationCoaching === true) {
+    if (prefs.conversationCoaching === true || selection) {
         const { InterviewCoach } = require('./interview-coach');
         const { GeminiTranscription } = require('./gemini-transcription');
         const generation = sessionGeneration;
@@ -305,13 +305,26 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
         };
         httpSessionActive = true;
         useLocalWhisper = false;
-        transcriptionMode = 'gemini-streaming';
+        transcriptionMode = selection?.transcriptionProvider === 'openai' ? 'openai-streaming' : 'gemini-streaming';
         initializeNewSession(profile, customPrompt);
         coach = new InterviewCoach({
-            ai: new GoogleGenAI({ apiKey }),
-            model: getConfig().geminiHttpModel || 'gemini-3.8-flash',
+            ...(selection
+                ? { generateDecision: require('./ai-providers').createCoachGenerator(selection.coachingProvider, selection.coachingKey) }
+                : { ai: new GoogleGenAI({ apiKey }) }),
+            model: selection?.model || getConfig().geminiHttpModel || 'gemini-3.8-flash',
             profile,
             customPrompt,
+            automaticEnabled: selection ? true : prefs.conversationCoaching !== false,
+            sessionInfo: {
+                coaching: {
+                    provider: selection?.coachingProvider || 'gemini',
+                    model: selection?.model || getConfig().geminiHttpModel || 'gemini-3.8-flash',
+                },
+                transcription: {
+                    provider: selection?.transcriptionProvider || 'gemini',
+                    model: selection?.transcriptionModel || prefs.geminiTranscriptionModel || 'gemini-3.5-transcribe-live',
+                },
+            },
             emit,
             onNewProblem: ids => {
                 activeAttachments = ids || [];
@@ -333,12 +346,14 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
         for (const source of ['You', 'Interviewer']) coach.setMuted(source, mutedAudio[source]);
         const sessionCoach = coach;
         const sources = prefs.audioMode === 'mic_only' ? ['You'] : prefs.audioMode === 'speaker_only' ? ['Interviewer'] : ['You', 'Interviewer'];
-        transcriptionStreams = new GeminiTranscription({
-            apiKey,
+        const Transcription =
+            selection?.transcriptionProvider === 'openai' ? require('./openai-transcription').OpenAITranscription : GeminiTranscription;
+        transcriptionStreams = new Transcription({
+            apiKey: selection?.transcriptionKey || apiKey,
             language,
             sources,
             mutedSources: sources.filter(source => mutedAudio[source]),
-            model: prefs.geminiTranscriptionModel || 'gemini-3.5-transcribe-live',
+            model: selection?.transcriptionModel || prefs.geminiTranscriptionModel || 'gemini-3.5-transcribe-live',
             onTranscript: event => {
                 if (isCurrent() && !mutedAudio[event.source]) sessionCoach.transcript(event);
             },
@@ -347,7 +362,7 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
             },
         });
         sendToRenderer('session-initializing', true);
-        sendToRenderer('update-status', 'Connecting Gemini conversation coach...');
+        sendToRenderer('update-status', 'Connecting conversation coach...');
         try {
             await transcriptionStreams.start();
             if (!isCurrent()) return false;
@@ -360,7 +375,7 @@ async function initializeGeminiHttpSession(apiKey, customPrompt = '', profile = 
             if (generation !== sessionGeneration) return false;
             closeGeminiHttpSession();
             sendToRenderer('session-initializing', false);
-            sendToRenderer('update-status', `Error: ${error.message}. Check Gemini Live transcription access or disable Conversation Coach.`);
+            sendToRenderer('update-status', `Error: ${error.message}. Check the selected provider API keys, quota, and model access.`);
             return false;
         }
     }
@@ -956,7 +971,7 @@ async function handleHttpScreenshot(base64Data, prompt, savedImagePath = null) {
     }
 
     const apiKey = sessionApiKey || getApiKey();
-    if (!apiKey) {
+    if (!coach && !apiKey) {
         return { success: false, error: 'No API key configured' };
     }
 

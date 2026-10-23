@@ -1,3 +1,4 @@
+import './ProviderSettings.js';
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { unifiedPageStyles } from './sharedPageStyles.js';
 
@@ -207,6 +208,7 @@ export class CustomizeView extends LitElement {
     ];
 
     static properties = {
+        sessionActive: { type: Boolean },
         selectedProfile: { type: String },
         promptProfile: { type: String },
         selectedLanguage: { type: String },
@@ -1025,6 +1027,7 @@ export class CustomizeView extends LitElement {
             <div class="unified-page">
                 <div class="unified-wrap">
                     <div class="page-title">Settings</div>
+                    <provider-settings .active=${this.sessionActive}></provider-settings>
                     ${this.renderAudioSection()} ${this.renderLanguageSection()} ${this.renderAppearanceSection()} ${this.renderStealthSection()}
                     ${this.renderScreenCaptureSection()} ${this.renderKeyboardSection()} ${this.renderPrivacySection()}
                 </div>

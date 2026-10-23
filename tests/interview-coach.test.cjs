@@ -401,3 +401,23 @@ for (const [action, label] of Object.entries({
         assert.equal(messages[1][1].prompt, label);
     });
 }
+
+test('published provider information is a fixed snapshot containing no credentials', t => {
+    const metadata = {
+        coaching: { provider: 'openai', model: 'gpt-6-luna', apiKey: 'secret' },
+        transcription: { provider: 'gemini', model: 'transcribe' },
+    };
+    const coach = new InterviewCoach({
+        model: 'gpt-6-luna',
+        sessionInfo: metadata,
+        generateDecision: async () => reply(),
+        emit() {},
+        saveTurn() {},
+        getImages: () => [],
+    });
+    t.after(() => coach.close());
+    metadata.coaching.model = 'changed';
+    coach.publish();
+    assert.equal(coach.lastState.sessionInfo.coaching.model, 'gpt-6-luna');
+    assert.equal(JSON.stringify(coach.lastState.sessionInfo).includes('secret'), false);
+});

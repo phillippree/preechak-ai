@@ -44,94 +44,22 @@ The SSH clone requires a GitHub key with access to this repository. You can also
 
 Grant screen recording and microphone permissions when requested. On macOS, check **System Settings → Privacy & Security** if capture fails, then restart the app after changing permissions.
 
-## Getting Started with Gemini
+## Gemini and OpenAI providers
 
-### Connect with your Gemini API Key
+Before starting a session, open **AI providers** on the home screen or in Settings:
 
-On the home screen:
+1. Enter your Gemini and/or OpenAI API key and click **Save providers and keys**.
+2. Choose **Voice transcription** independently from **Coaching and screen analysis**.
+3. For OpenAI coaching, select **GPT-6 Luna**, **GPT-6 Sol**, or **GPT-6.1 Sol**. Voice uses its own transcription model.
+4. Optionally check the saved keys' connections, then start the session.
 
-1. Under **Gemini API & Connection**, enter your Gemini API key and choose your **Connection Mode**:
-    - **Live Streaming (WebSocket)**: Connects to Gemini Live (`gemini-3.1-flash-live-preview`) for bidirectional real-time audio.
-    - **Buffered Requests (HTTP)**: Buffers audio segments on speech pauses and sends requests via HTTP REST (`gemini-3.8-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, etc.).
-2. Choose your profile, audio input, language, and prompts in the app's settings and AI customization views.
-3. Click **Start Session**.
+Gemini is still the default. You can use one provider for everything or mix them; only selected providers need keys. Selections are fixed for the session. Existing Gemini keys are recognized automatically. The shared Coach preserves conversation context, screenshot/code-review actions, visual explanations and collapsible answers. No automatic cross-provider fallback occurs.
 
-### Audio transcription
+See [AI providers](documents/ai-providers.md) for data routing, credential storage, supported behavior and testing limits. The Gemini-specific options below describe the existing legacy transport settings.
 
-Under **Gemini API & Connection → Buffered Requests (HTTP) → Audio Transcription**, choose how speech becomes text:
+## Gemini connection
 
-| Selection               | Transcription path                                     | Answer generation                             |
-| ----------------------- | ------------------------------------------------------ | --------------------------------------------- |
-| **Local Whisper**       | Audio is transcribed on your computer by whisper.cpp   | Recognized text is sent to Gemini for answers |
-| **Google Gemini Cloud** | Buffered audio is transcribed in-memory by Gemini HTTP | The transcript is used in an answer request   |
-| **No Transcription**    | Audio is ignored by the HTTP transcription pipeline    | Typed questions and screenshots remain active |
-
-The current HTTP transcription preference defaults to **Local Whisper** with **Base English**; saved settings override defaults. In Google Gemini Cloud transcription mode, audio segments are transcribed directly in-memory via the configured Gemini HTTP model for lowest round-trip latency. The overall connection default remains Gemini Live/WebSocket, which uses Gemini Live transcription and does not use this HTTP selector. Transcription settings cannot be changed during an active session.
-
-```mermaid
-flowchart TD
-    A["Microphone / system audio"] --> B["Detect speech and buffer until a pause"]
-    B --> C["Queue completed speech segment"]
-    C --> D{"HTTP transcription selection"}
-    D -->|Local Whisper| E["Resample to 16 kHz WAV<br/>Local whisper-server /inference"]
-    D -->|Gemini Cloud| F["Send audio to Gemini<br/>for transcription"]
-    E --> G["Show recognized words"]
-    F --> G
-    G --> H["Transcript + conversation context<br/>+ selected screenshot attachments"]
-    H --> I["Remote answer provider (Gemini)"]
-    I --> J["Stream answer and save history"]
-```
-
-The diagram shows the audio-enabled HTTP paths. With **No Transcription**, use text or screenshots directly. In Local Whisper mode, audio stays on your computer for recognition, but the transcript and any selected images still go to Gemini for answering.
-
-#### Whisper engine and models
-
-- **Engine:** the current installer builds `whisper-server` from the [official whisper.cpp source](https://github.com/ggml-org/whisper.cpp) when no engine is found. This requires a working build toolchain; it is not simply a model download. The current source clone is not pinned to a release or commit.
-- **Models:** `tiny.en`, `base.en`, and `small.en` come from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp). These are English-only, and the current transcription request explicitly uses English.
-- **Storage:** engines and auxiliary files go under `<config-dir>/binaries/`; models go under `<config-dir>/models/whisper/`. See [Local data and storage locations](#local-data-and-storage-locations) for platform paths.
-- **Reuse:** existing engines are discovered locally, and valid model files are reused. Missing or invalid models are downloaded to temporary `.part` files and checked against their configured SHA-256 checksums.
-- **Progress:** the UI shows engine/model status, download progress, cancellation, retry/repair, open-folder, and model-removal controls. Model progress uses byte counts where available; engine-build percentages represent stages rather than precise remaining work.
-- **Startup:** the app launches Whisper on `127.0.0.1`, checks readiness, and posts WAV segments to `/inference`. Closing the HTTP session stops its Whisper server and clears pending speech.
-- **Failure:** Whisper errors are reported without silently uploading the audio to Gemini.
-
-**Troubleshooting:** an engine shown as installed can still fail to launch because the current installation check primarily detects its executable. A macOS error such as `Library not loaded: @rpath/libwhisper.1.dylib` indicates a missing engine dependency, not a corrupt speech model. The build code includes static-library flags and auxiliary-library handling, but an older broken executable may still require repair.
-
-See [Transcription details and diagrams](documents/transcription.md) for the complete routing, installation, queue, storage, and troubleshooting explanation.
-
-### Gemini HTTP context management, shared screenshots, and token budgeting
-
-In HTTP mode, speech segments are transcribed first, then answered with full conversation awareness and optional active screenshot attachments:
-
-- **Shared Conversation Memory & Screenshot Context**:
-    - Spoken, typed, and screenshot exchanges share a unified conversation history with rolling summary and token budgeting.
-    - Capturing a screenshot automatically makes it the active image for subsequent spoken or typed follow-up questions until removed or replaced.
-    - Screenshots are stored once on disk; conversation turns store lightweight image references rather than duplicating Base64 data.
-    - Older screenshots contribute their discussion as text in subsequent turns without re-attaching raw image payloads unless explicitly selected.
-- **Attachment Controls**:
-    - Selected image thumbnails appear above the question input bar in `AssistantView`.
-    - **Remove (`✕`)**: Excludes an attachment from upcoming requests without deleting its saved file on disk.
-    - **Compare with previous (`⇆`)**: Attaches both the current and immediately preceding screenshots with explicit ordering labels (`[Attached Image 1 (Current)]`, `[Attached Image 2 (Previous)]`).
-    - **History Picker (`📷`)**: Allows selecting any earlier capture from the session (supporting up to 2 attached images).
-- **Queue Snapshotting & Request Correctness**:
-    - Spoken questions snapshot active attachments at speech segment start time so subsequent captures during transcription do not retroactively attach to older questions.
-    - Typed questions snapshot active attachments upon message submission.
-    - Session restarts or disconnects clear active attachments and discard queued requests.
-- **Token-budgeted recent history**: Retains recent complete exchanges up to a configurable budget (default: 4,000 tokens) in their original `user` and `model` roles.
-- **Running conversation summary**: When history exceeds the token budget, older exchanges are automatically condensed into a compact factual summary (target: 500 tokens) that is prepended to subsequent requests.
-- **Role & attribution preservation**: Summaries explicitly distinguish interviewer questions, the user's spoken statements (`[You]`), screenshot analyses, and AI-suggested answers without misattributing claims.
-- **Cost vs. quality tradeoffs**:
-    - _Image tokens_: Each attached image contributes ~258 estimated tokens to the request context.
-    - _Higher budget_ (e.g. 8,000 tokens): Better recall of exact phrasing in long sessions, higher per-request input token costs.
-    - _Lower budget_ (e.g. 2,000 tokens): Lower token usage, triggers summarization sooner to condense older details.
-
-Model and context configuration defaults:
-
-| Setting               | Default in this checkout        | Purpose                                                  |
-| --------------------- | ------------------------------- | -------------------------------------------------------- |
-| Gemini Live           | `gemini-3.1-flash-live-preview` | Live WebSocket streaming model                           |
-| Gemini HTTP Model     | `gemini-3.8-flash`              | HTTP REST model for transcription, answers, and images   |
-| Recent History Budget | `4000` tokens                   | Maximum token allocation for recent conversational turns |
-| Summary Target        | `500` tokens                    | Target token length for the running background summary   |
+Choose Gemini for transcription and/or coaching in **AI providers**, enter your key, and save. The Gemini coaching model is configurable in that same section; an existing saved model remains selected. Conversation Coach is always enabled for new API sessions. Older Gemini transport settings are retained in the backend but are no longer shown on the home screen.
 
 ## Modular Architecture & Pipeline
 
@@ -196,21 +124,21 @@ The following capabilities are planned or in development and not part of the act
 
 On macOS, shortcuts use **Command** (`Cmd`). Global shortcuts work while the app is running, subject to operating-system conflicts.
 
-| Action                                                                     | macOS                 | Windows / Linux       |
-| -------------------------------------------------------------------------- | --------------------- | --------------------- |
-| Move window                                                                | `Cmd + Arrow keys` | `Ctrl + Arrow keys`   |
-| Show / hide window                                                         | `Cmd + \`             | `Ctrl + \`            |
-| Toggle click-through                                                       | `Cmd + M`             | `Ctrl + M`            |
-| Toggle stealth mode                                                        | `Cmd + Shift + H`     | `Ctrl + Shift + H`    |
-| Start session from home; capture and ask about the screen during a session | `Cmd + Enter`         | `Ctrl + Enter`        |
-| Previous response                                                          | `Cmd + [`             | `Ctrl + [`            |
-| Next response                                                              | `Cmd + ]`             | `Ctrl + ]`            |
-| Scroll response up                                                         | `Cmd + Shift + Up`    | `Ctrl + Shift + Up`   |
-| Scroll response down                                                       | `Cmd + Shift + Down`  | `Ctrl + Shift + Down` |
-| Increase opacity                                                           | `Cmd + .`          | `Alt + .`             |
-| Decrease opacity                                                           | `Cmd + ,`          | `Alt + ,`             |
-| Send a typed message while its input is focused                            | `Enter`               | `Enter`               |
-| Emergency erase and quit                                                   | `Cmd + Shift + E`     | `Ctrl + Shift + E`    |
+| Action                                                                     | macOS                | Windows / Linux       |
+| -------------------------------------------------------------------------- | -------------------- | --------------------- |
+| Move window                                                                | `Cmd + Arrow keys`   | `Ctrl + Arrow keys`   |
+| Show / hide window                                                         | `Cmd + \`            | `Ctrl + \`            |
+| Toggle click-through                                                       | `Cmd + M`            | `Ctrl + M`            |
+| Toggle stealth mode                                                        | `Cmd + Shift + H`    | `Ctrl + Shift + H`    |
+| Start session from home; capture and ask about the screen during a session | `Cmd + Enter`        | `Ctrl + Enter`        |
+| Previous response                                                          | `Cmd + [`            | `Ctrl + [`            |
+| Next response                                                              | `Cmd + ]`            | `Ctrl + ]`            |
+| Scroll response up                                                         | `Cmd + Shift + Up`   | `Ctrl + Shift + Up`   |
+| Scroll response down                                                       | `Cmd + Shift + Down` | `Ctrl + Shift + Down` |
+| Increase opacity                                                           | `Cmd + .`            | `Alt + .`             |
+| Decrease opacity                                                           | `Cmd + ,`            | `Alt + ,`             |
+| Send a typed message while its input is focused                            | `Enter`              | `Enter`               |
+| Emergency erase and quit                                                   | `Cmd + Shift + E`    | `Ctrl + Shift + E`    |
 
 Edit the listed global shortcuts in **Settings**, or use **Reset to defaults**. The emergency shortcut is registered at startup but is not exposed in the shortcut editor; changing or resetting shortcuts can unregister it until the app restarts. `Enter` is a message-input action, not a configurable global shortcut.
 

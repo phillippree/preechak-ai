@@ -22,6 +22,7 @@ function harness({
         }),
     }),
     streamError = null,
+    storageKey = 'test',
 } = {}) {
     const events = [],
         saved = [],
@@ -44,9 +45,16 @@ function harness({
             if (name === 'node:path' || name === 'path') return path;
             if (name === './llmRequestLogger') return { logLlmRequest: (_, payload) => payload };
             if (name === './interview-coach') return require('../src/utils/interview-coach');
-            if (name === './gemini-transcription')
+            if (name === './ai-providers')
                 return {
-                    GeminiTranscription: class {
+                    createCoachGenerator: (provider, key) => async request => {
+                        coachRequests.push({ ...request, provider, key });
+                        return coachResponse(request);
+                    },
+                };
+            if (name === './gemini-transcription' || name === './openai-transcription')
+                return {
+                    [name === './openai-transcription' ? 'OpenAITranscription' : 'GeminiTranscription']: class {
                         constructor(options) {
                             this.options = options;
                             this.audio = [];
@@ -101,7 +109,7 @@ function harness({
                 };
             if (name === '../storage')
                 return {
-                    getApiKey: () => 'test',
+                    getApiKey: () => storageKey,
                     getConfig: () => ({ httpRecentHistoryTokenBudget: 4000, httpSummaryTargetTokens: 500, ...config }),
                     getPreferences: () => prefs,
                 };
@@ -966,3 +974,60 @@ test('both muted blocks streaming audio and late captions while text requests re
     assert.equal(h.coachRequests.length, 1);
     h.api.closeGeminiHttpSession();
 });
+
+for (const coachingProvider of ['gemini', 'openai'])
+    for (const transcriptionProvider of ['gemini', 'openai']) {
+        test(`shared coach retains text and screen actions with ${coachingProvider}/${transcriptionProvider}`, async () => {
+            const h = harness({
+                preferences: { conversationCoaching: true, audioMode: 'both' },
+                storageKey: '',
+                coachResponse: async () => ({
+                    text: JSON.stringify({
+                        action: 'hint',
+                        newProblem: false,
+                        captureIntent: 'review_code',
+                        captureReason: 'Existing code',
+                        contribution: 'context',
+                        summary: 'Shared problem',
+                        problem: { title: 'Shared problem' },
+                        output: 'A focused answer',
+                    }),
+                }),
+            });
+            const selection = {
+                coachingProvider,
+                transcriptionProvider,
+                coachingKey: 'coach-secret',
+                transcriptionKey: 'transcription-secret',
+                model: coachingProvider === 'openai' ? 'gpt-6-luna' : 'gemini-model',
+                transcriptionModel: transcriptionProvider === 'openai' ? 'gpt-live-transcribe' : 'gemini-transcription',
+            };
+            assert.equal(await h.api.initializeGeminiHttpSession('', '', 'interview', 'en-US', selection), true);
+            assert.equal(h.api.getCoachState().sessionInfo.coaching.provider, coachingProvider);
+            assert.equal(h.api.getCoachState().sessionInfo.coaching.model, selection.model);
+            assert.equal(h.api.getCoachState().sessionInfo.transcription.provider, transcriptionProvider);
+            assert.equal(JSON.stringify(h.api.getCoachState()).includes('secret'), false);
+            const connection = h.transcriptionConnections[0];
+            assert.equal(connection.options.apiKey, 'transcription-secret');
+            assert.equal(connection.options.model, selection.transcriptionModel);
+            for (const source of ['You', 'Interviewer']) h.api.processHttpAudioChunk(audio, source);
+            assert.equal(connection.audio.length, 2);
+            await h.api.sendTextToGeminiHttp('Explain this');
+            assert.equal(h.coachRequests[0].provider, coachingProvider);
+            assert.equal(h.coachRequests[0].key, 'coach-secret');
+            assert.equal(h.coachRequests[0].model, selection.model);
+            assert.equal(
+                h.events.some(([channel]) => channel === 'new-response'),
+                true
+            );
+            const screen = await h.api.handleHttpScreenshot('synthetic-image', 'Use Python', '/fake/screen.png');
+            assert.equal(screen.success, true);
+            assert.equal(h.coachRequests[1].images[0].data, 'synthetic-image');
+            assert.equal(h.coachRequests[1].context.request.screenshotPreferences, 'Use Python');
+            const action = await h.api.captureAction(h.api.getCoachState().capture.id, 'explain_visual');
+            assert.equal(action.success, true);
+            assert.equal(h.coachRequests[2].context.request.captureAction, 'explain_visual');
+            h.api.closeGeminiHttpSession();
+            assert.equal(connection.closed, true);
+        });
+    }
