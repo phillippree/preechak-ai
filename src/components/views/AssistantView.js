@@ -1,6 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { markdownStyles } from './markdownStyles.js';
-import { renderMarkdown, renderMermaidDiagrams, handleCodeCopyClick } from '../../utils/markdownRenderer.js';
+import { renderMarkdown, renderMermaidDiagrams, handleCodeCopyClick, collapseAnswerSections } from '../../utils/markdownRenderer.js';
 
 export class AssistantView extends LitElement {
     static styles = [
@@ -442,6 +442,28 @@ export class AssistantView extends LitElement {
                 border-radius: 18px 18px 4px 18px !important;
             }
 
+            .answer-section {
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 10px 14px;
+                margin: 8px 0;
+            }
+            .answer-section > summary {
+                font-weight: 600;
+                font-size: 1.05em;
+                cursor: default;
+                padding: 4px 0;
+            }
+            .answer-section > summary:hover {
+                color: var(--accent-hover);
+            }
+            .answer-section > summary:focus-visible {
+                outline: 1px solid var(--accent);
+                outline-offset: 3px;
+            }
+            .answer-section[open] > summary {
+                margin-bottom: 10px;
+            }
             .bubble-ai-content {
                 font-size: var(--response-font-size, 14px);
                 line-height: var(--line-height);
@@ -1566,7 +1588,7 @@ export class AssistantView extends LitElement {
     }
 
     renderMarkdown(content) {
-        return renderMarkdown(content || '');
+        return collapseAnswerSections(renderMarkdown(content || ''));
     }
 
     handleContentClick(e) {

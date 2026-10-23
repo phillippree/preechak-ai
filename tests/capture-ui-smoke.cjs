@@ -126,6 +126,20 @@ app.whenReady().then(async () => {
         await new Promise(r => setTimeout(r, 100));
         const result = await win.webContents.executeJavaScript(`(async()=>{
   const v=window.__captureView;
+  const sectionHost=document.createElement('div');
+  sectionHost.innerHTML=v.renderProtectedMarkdown('## What the question is asking\\nStart at index 0; reach the last index.\\n\\n\\x60\\x60\\x60text\\n[2,3,1] start -> goal\\n\\x60\\x60\\x60\\n\\n## Chalkboard Walkthrough: Solution 1\\nExample trace\\n\\n## Solution 1: Basic\\n### Code\\n\\x60\\x60\\x60python\\nreturn 2\\n\\x60\\x60\\x60\\n\\n## Chalkboard Walkthrough: Solution 2\\nOptimized trace\\n\\n## Solution 2: Optimized\\nOptimized code\\n\\n## What to Say / Edge Cases\\nOne-element input');
+  const sections=[...sectionHost.querySelectorAll('details.answer-section')];
+  if(sections.length!==6 || sections.some(s=>!s.open))throw new Error('Answer sections missing or not expanded');
+  const expected=['What the question is asking','Chalkboard Walkthrough: Solution 1','Solution 1: Basic','Chalkboard Walkthrough: Solution 2','Solution 2: Optimized','What to Say / Edge Cases'];
+  if(sections.map(s=>s.querySelector('summary').textContent).join('|')!==expected.join('|'))throw new Error('Section order incorrect');
+  sections[3].querySelector('summary').click();
+  if(sections[3].open || !sections[1].open || !sections[4].open)throw new Error('Walkthroughs do not collapse independently');
+  sections[0].querySelector('summary').click();
+  if(sections[0].open || !sections[1].open)throw new Error('Independent section collapse failed');
+  if(!sections[2].querySelector('.code-block-copy-btn') || !sections[2].textContent.includes('return 2'))throw new Error('Code or copy button lost');
+  if(sectionHost.querySelectorAll('details.answer-section details.answer-section').length)throw new Error('Nested solution sections');
+  if(v.renderProtectedMarkdown('A short coaching hint').includes('answer-section'))throw new Error('Short hints should stay unchanged');
+
   v.coachState={...v.coachState,capture:{id:'capture-test',intent:'review_code',reason:'Reviewing your implementation against the problem.',needsChoice:false,pending:false}};
   await v.updateComplete;
   v.coachExpanded=false;await v.updateComplete;

@@ -622,7 +622,40 @@ async function handleCodeCopyClick(event) {
     return true;
 }
 
+// Group only recognized top-level answer sections after sanitizing Markdown.
+// Moving existing DOM nodes preserves diagrams, highlighted code and copy controls.
+function collapseAnswerSections(html) {
+    if (typeof document === 'undefined') return html;
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const recognized =
+        /^(?:what the question is asking|(?:visual )?chalkboard walkthrough|visual explanation|solution\s*[12]\s*[:—-]|what to say|key takeaways)/i;
+    const nodes = [...template.content.childNodes];
+    let section = null;
+    let level = 0;
+    for (const node of nodes) {
+        const heading = /^H[1-3]$/.test(node.nodeName);
+        const rank = heading ? Number(node.nodeName[1]) : 0;
+        if (heading && recognized.test(node.textContent.trim())) {
+            section = document.createElement('details');
+            section.className = 'answer-section';
+            section.open = true;
+            const summary = document.createElement('summary');
+            summary.textContent = node.textContent;
+            section.append(summary);
+            template.content.insertBefore(section, node);
+            node.remove();
+            level = rank;
+        } else {
+            if (heading && rank <= level) section = null;
+            if (section) section.append(node);
+        }
+    }
+    return template.innerHTML;
+}
+
 export {
+    collapseAnswerSections,
     renderMarkdown,
     renderMermaidDiagrams,
     handleCodeCopyClick,
